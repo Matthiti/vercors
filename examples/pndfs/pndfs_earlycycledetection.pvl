@@ -1,0 +1,1617 @@
+/* * Optimised Parallel Nested DFS (with early cycle detection) */
+
+class Worker {
+	
+	/** ** Thread-local state */
+	
+	Master master;
+	int tid; // thread identifier
+	int nthreads; // total number of threads (in `master`)
+	seq<int> color; // color set
+	boolean term; // thread-local termination flag
+	seq<boolean> observedred; // all states observed red by this worker
+	seq<boolean> pink; // set of pink states
+	boolean exploringred; // true if this worker is performing `dfsred`
+	boolean waiting; // if `exploringred == true`, then `waiting` indicates that the worker is done exploring and waiting for other threads to complete their exploration
+	int redroot; // if `exploringred == true`, then `redroot` is the root node from which a red DFS is being performed
+	
+	// inline predicate that helps to connect the state of the master with the state of a worker.
+	static inline resource MasterState(Worker me, int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot) =
+		me != null **
+		Perm(me.master, read) ** me.master != null **
+		Perm(me.nthreads, read) ** 0 < me.nthreads **
+		Perm(me.tid, read) ** 0 <= me.tid ** me.tid < me.nthreads **
+		Perm(me.term, 1/2) **
+		Perm(me.master.N, read) ** N == me.master.N **
+		Perm(me.master.G, read) ** G == me.master.G **
+		Perm(me.master.A, read) ** A == me.master.A **
+		Perm(me.master.blueroot, read) ** blueroot == me.master.blueroot **
+		Perm(me.master.threads, read) **
+		|me.master.threads| == me.nthreads **
+		me.master.threads[me.tid] == me;
+
+
+	/* ** Auxiliary operations */
+
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) && |A| == N;
+	context Perm(observedred, 1/2) ** |observedred| == N;
+	context 0 <= s && s < N;
+	ensures (\forall int v; 0 <= v && v < N && v != s; observedred[v] == \old(observedred[v]));
+	ensures \old(observedred[s]) ==> observedred[s];
+	ensures term == \old(term);
+	void update_redmarkers(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s) {
+		lock master;
+		if (master.red[s] && !observedred[s]) {
+			observedred = Master.UpdateBool(observedred, s, true);
+		}
+		unlock master;
+	}
+	//void update_redmarkers(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s);
+	
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) && |A| == N;
+	context Perm(color, 1/2) ** |color| == N;
+	context Perm(pink, 1/2) ** |pink| == N;
+	context Perm(observedred, 1/2) ** |observedred| == N;
+	context 0 <= s && s < N;
+	context (\forall int v; 0 <= v && v < N && G[s][v]; color[v] == Master.blue() || color[v] == Master.cyan() || observedred[v]);
+	context color[s] == Master.cyan() || color[s] == Master.blue();
+	context A[s] ==> color[s] == Master.cyan();
+	context Perm(exploringred, 1/2) ** exploringred;
+	context Perm(waiting, 1/2) ** !waiting;
+	context Perm(redroot, 1/2);
+	context 0 <= redroot && redroot < N && A[redroot];
+	context A[s] ==> s == redroot;
+	context Master.ExPath(N, G, redroot, s, 1);
+	ensures (\forall int v; 0 <= v && v < N && v != s; pink[v] == \old(pink[v]));
+	ensures pink[s];
+	ensures color == \old(color);
+	ensures observedred == \old(observedred);
+	ensures redroot == \old(redroot);
+	ensures term == \old(term);
+	void update_setpink(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s) {
+		lock master;
+		pink = Master.UpdateBool(pink, s, true);
+		unlock master;
+	}
+	//void update_setpink(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s);
+	
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) && |A| == N;
+	context Perm(color, 1/2) ** |color| == N;
+	context Perm(pink, 1/2) ** |pink| == N;
+	context Perm(observedred, 1/2) ** |observedred| == N;
+	context 0 <= s && s < N && !A[s];
+	context color[s] == Master.blue();
+	context (\forall int v; 0 <= v && v < N && G[s][v]; (observedred[v] || pink[v]) && color[v] != Master.cyan()); // needed for invariant 2
+	requires pink[s];
+	ensures color == \old(color);
+	ensures term == \old(term);
+	ensures (\forall int v; 0 <= v && v < N && v != s; pink[v] == \old(pink[v]) && observedred[v] == \old(observedred[v]));
+	ensures observedred[s] && !pink[s];
+	void update_setred(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s) {
+		lock master;
+		
+		// if there exists a special path which we break by coloring `redroot` red, apply the lemma that finds another special path
+		assert (\forall int t1; 0 <= t1 && t1 < |master.threads| && Master.ExSpecialPath(N, G, master.threads[t1].color, master.threads[t1].pink, master.red);
+			Master.lemma_findspec_upd_thr(N, G, master.A, master.threads, master.red, Master.UpdateInt(master.redowner, s, tid), t1, s, master.threads[t1].redroot) &&
+			(\exists int t2; 0 <= t2 && t2 < |master.threads|; Master.ExSpecialPath(N, G, master.threads[t2].color, Master.UpdateBool(master.threads[t2].pink, s, false), Master.UpdateBool(master.red, s, true)))
+		);
+		
+		master.red = Master.UpdateBool(master.red, s, true);
+		master.redowner = Master.UpdateInt(master.redowner, s, tid); // ghostcode
+		observedred = Master.UpdateBool(observedred, s, true); // ghostcode
+		pink = Master.UpdateBool(pink, s, false);
+
+		// increases performance (does not make much difference yet)
+		assert Master.KeyInvariant(N, G, A, master.threads, master.red, blueroot); 
+
+		unlock master;
+	}
+	//void update_setred(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s);
+
+	invariant MasterState(this, N, G, A, blueroot);
+	invariant Master.AdjacencyMatrix(N, G) && |A| == N;
+	invariant Perm(color, 1/2) ** |color| == N;
+	invariant Perm(pink, 1/2) ** |pink| == N;
+	invariant Perm(observedred, 1/2) ** |observedred| == N;
+	invariant Perm(exploringred, 1/2) ** Perm(waiting, 1/2) ** Perm(redroot, 1/2);
+	invariant 0 <= redroot && redroot < N;
+	invariant (\forall int v; 0 <= v && v < N && G[redroot][v]; observedred[v] && color[v] != Master.cyan()); // needed for invariant 2
+	requires exploringred && waiting;
+	ensures color == \old(color);
+	ensures redroot == \old(redroot);
+	ensures term == \old(term);
+	ensures (\forall int v; 0 <= v && v < N && v != redroot; pink[v] == \old(pink[v]) && observedred[v] == \old(observedred[v]));
+	ensures observedred[redroot] && !pink[redroot];
+	ensures !waiting && !exploringred;
+	void update_setred_await(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot) {
+		boolean stop = false;
+	
+		loop_invariant color == \old(color);
+		loop_invariant redroot == \old(redroot);
+		loop_invariant term == \old(term);
+		loop_invariant !stop ==> (exploringred && waiting);
+		loop_invariant !stop ==> pink == \old(pink);
+		loop_invariant !stop ==> observedred == \old(observedred);
+		loop_invariant stop ==> (\forall int v; 0 <= v && v < N && v != redroot; pink[v] == \old(pink[v]));
+		loop_invariant stop ==> (\forall int v; 0 <= v && v < N && v != redroot; observedred[v] == \old(observedred[v]));
+		loop_invariant stop ==> (observedred[redroot] && !pink[redroot]);
+		loop_invariant stop ==> (!waiting && !exploringred);
+		while (!stop) {
+			lock master;
+			
+			// the following if-statement can also be implemented using another while-loop if one does not use PVL to implement the algorithm, but for now this is more convenient
+			if ((\forall int t; 0 <= t && t < |master.threads| && master.threads[t].exploringred && master.threads[t].redroot == redroot; master.threads[t].waiting)) {
+				
+				// if `redroot` is not already red but there exists a cycle that includes `redroot`, we can also find a special path using our lemma
+				assert (!master.red[redroot] && Master.ExPath(N, G, redroot, redroot, 2)) ==> (
+					Master.lemma_findspec_cycle_thr(N, G, master.A, master.threads, master.red, master.redowner, redroot) &&
+					(\exists int t; 0 <= t && t < |master.threads|; Master.ExSpecialPath(N, G, master.threads[t].color, master.threads[t].pink, master.red))
+				);
+
+				// if there exists a special path which we break by coloring `redroot` red, apply the lemma that finds another special path
+				assert (\forall int t1; 0 <= t1 && t1 < |master.threads| && Master.ExSpecialPath(N, G, master.threads[t1].color, master.threads[t1].pink, master.red);
+					Master.lemma_findspec_upd_thr(N, G, master.A, master.threads, master.red, Master.UpdateInt(master.redowner, redroot, tid), t1, redroot, master.threads[t1].redroot) &&
+					(\exists int t2; 0 <= t2 && t2 < |master.threads|; Master.ExSpecialPath(N, G, master.threads[t2].color, Master.UpdateBool(master.threads[t2].pink, redroot, false), Master.UpdateBool(master.red, redroot, true)))
+				);
+
+				master.red = Master.UpdateBool(master.red, redroot, true);
+				master.redowner = Master.UpdateInt(master.redowner, redroot, tid); // ghost
+				observedred = Master.UpdateBool(observedred, redroot, true); // ghost
+				pink = Master.UpdateBool(pink, redroot, false);
+				exploringred = false; // ghost
+				waiting = false; // ghost
+				stop = true;
+				
+				// increases verification performance
+				assert (\forall int t; 0 <= t && t < |master.threads|;
+					master.ColorTypes(master.threads[t].color) &&
+					master.ThreadLocalInvariants(N, G, A, master.threads[t].color, master.threads[t].pink, master.red)
+				);
+				
+				// invariant 2; increases performance
+				assert (\forall int v; 0 <= v && v < N && master.red[v];
+					(\forall int w; 0 <= w && w < N && G[v][w];
+						master.red[w] || (master.threads[master.redowner[v]].pink[w] && master.threads[master.redowner[v]].color[w] != Master.cyan())
+					)
+				);
+				
+				// increases verification performance
+				assert Master.Invariant6(N, G, A, master.red);
+				assert Master.KeyInvariant(N, G, A, master.threads, master.red, blueroot); 
+			}
+			
+			unlock master;
+		}
+	}
+	//void update_setred_await(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot);
+	
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) ** |A| == N;
+	context Perm(pink, 1/2) ** |pink| == N;
+	context Perm(color, 1/2) ** |color| == N;
+	context Perm(exploringred, 1/2) ** !exploringred;
+	context 0 <= s && s < N;
+	context Master.ColorTypes(color);
+	requires !pink[s];
+	ensures pink == \old(pink);
+	ensures term == \old(term);
+	ensures (\forall int v; 0 <= v && v < N && v != s; color[v] == \old(color[v]));
+	ensures color[s] == Master.cyan();
+	void update_setcyan(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s) {
+		lock master;
+		color = Master.UpdateInt(color, s, Master.cyan());
+		unlock master;
+	}
+	//void update_setcyan(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s);
+	
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) ** |A| == N;
+	context Perm(color, 1/2) ** |color| == N;
+	context Perm(pink, 1/2) ** |pink| == N;
+	context Perm(observedred, 1/2) ** |observedred| == N;
+	context 0 <= s && s < N;
+	context Master.ColorTypes(color);
+	context (\forall int v; 0 <= v && v < N && G[s][v]; color[v] == Master.blue() || color[v] == Master.cyan() || observedred[v]);
+	context (\forall int v; 0 <= v && v < N; !pink[v]);
+	context A[s] ==> observedred[s];
+	context !pink[s];
+	requires color[s] == Master.cyan();
+	ensures (\forall int v; 0 <= v && v < N && v != s; color[v] == \old(color[v]));
+	ensures color[s] == Master.blue();
+	ensures pink == \old(pink);
+	ensures observedred == \old(observedred);
+	ensures term == \old(term);
+	void update_setblue(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s) {
+		lock master;
+		color = Master.UpdateInt(color, s, Master.blue());
+		unlock master;
+	}
+	//void update_setblue(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s);
+	
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) && |A| == N;
+	context Perm(pink, 1/2) ** |pink| == N;
+	context Perm(color, 1/2) ** |color| == N;
+	context Perm(observedred, 1/2) ** |observedred| == N;
+	context Perm(waiting, 1/2) ** Perm(redroot, 1/2);
+	context 0 <= redroot && redroot < N;
+	context pink[redroot] && A[redroot];
+	context (\forall int v; 0 <= v && v < N && v != redroot; !pink[v]);
+	context (\forall int v; 0 <= v && v < N && G[redroot][v]; observedred[v]);
+	context (\forall int v; 0 <= v && v < N && G[redroot][v]; color[v] != Master.cyan());
+	requires !waiting;
+	ensures waiting;
+	ensures redroot == \old(redroot);
+	ensures color == \old(color);
+	ensures observedred == \old(observedred);
+	ensures pink == \old(pink);
+	ensures redroot == \old(redroot);
+	ensures term == \old(term);
+	void update_setwaiting(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot) {
+		lock master;
+		waiting = true;
+		unlock master;
+	}
+	//void update_setwaiting(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot);
+	
+	context MasterState(this, N, G, A, blueroot);
+	context Master.AdjacencyMatrix(N, G) && |A| == N;
+	context Perm(color, 1/2) ** |color| == N;
+	context Perm(observedred, 1/2) ** |observedred| == N;
+	context Perm(exploringred, 1/2) ** Perm(waiting, 1/2) ** Perm(redroot, 1/2);
+	context 0 <= root && root < N && A[root];
+	context (\forall int v; 0 <= v && v < N && color[v] == Master.cyan(); Master.ExPath(N, G, v, root, 1));
+	requires !exploringred && !observedred[root];
+	ensures color == \old(color);
+	ensures term == \old(term);
+	ensures (\forall int v; 0 <= v && v < N && v != root; observedred[v] == \old(observedred[v]));
+	ensures !observedred[root] ==> (exploringred && !waiting && redroot == root);
+	ensures observedred[root] ==> (!exploringred && redroot == \old(redroot));
+	void update_explorered(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int root) {
+		lock master;
+		
+		if (master.red[root]) {
+			observedred = Master.UpdateBool(observedred, root, true);
+		}
+		else {
+			exploringred = true;
+			waiting = false;
+			redroot = root;
+		}
+
+		unlock master;
+	}
+	//void update_explorered(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int root);
+	
+	context MasterState(this, N, G, A, blueroot);
+	ensures !\result ==> (term == \old(term));
+	ensures \result ==> term;
+	boolean update_abort(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot) {
+		boolean aborting = false;
+		lock master;
+		if (master.abort) {
+			term = true;
+			aborting = true;
+		}
+		unlock master;
+		return aborting;
+	}
+	//boolean update_abort(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot);
+	
+	
+	/* ** DFS red */
+	
+	yields int c; // explicit witness
+	yields seq<int> P; // explicit witness
+	invariant MasterState(this, N, G, A, blueroot);
+	invariant Master.AdjacencyMatrix(N, G) && |A| == N;
+	invariant Perm(color, 1/2) ** |color| == N;
+	invariant Perm(pink, 1/2) ** |pink| == N;
+	invariant Perm(observedred, 1/2) ** |observedred| == N;
+	invariant 0 <= s && s < N;
+	invariant 0 <= root && root < N;
+	invariant Master.ColorTypes(color);
+	invariant s == root || color[s] == Master.blue();
+	invariant color[root] == Master.cyan() && A[root];
+	invariant Master.Invariant1a(N, G, color, observedred);
+	invariant Master.Invariant1b(N, G, color, pink, observedred);
+	invariant (\forall int v; 0 <= v && v < N && G[root][v]; color[v] == Master.blue() || color[v] == Master.cyan() || observedred[v]); // `Next({root}, Blue ∪ Cyan ∪ Red)`
+	invariant (\forall int v; 0 <= v && v < N; !pink[v] || !observedred[v]); // `Pink ∩ Red = Ø`
+	invariant Master.Invariant3(N, G, A, color, observedred);
+	invariant Master.Invariant4(N, G, A, color, pink);
+	invariant (\forall int v; 0 <= v && v < N && pink[v] && v != root; color[v] == Master.blue()); // `Pink ⊆ Blue ∪ {root}` -- L5 (improved)
+	invariant (\forall int v; 0 <= v && v < N && v != root && observedred[v]; color[v] != Master.cyan()); // `Red - {root} ⊆ (G - {root}) - Cyan`
+	invariant (\forall int v; 0 <= v && v < N && color[v] == Master.cyan(); Master.ExPath(N, G, v, root, 1));
+	invariant (\forall int v; 0 <= v && v < N && pink[v]; Master.ExPath(N, G, root, v, 1));
+	invariant A[s] ==> s == root;
+	invariant s == root ==> A[s];
+	invariant Perm(exploringred, 1/2);
+	invariant Perm(waiting, 1/2) ** !waiting;
+	invariant Perm(redroot, 1/2) ** redroot == root;
+	requires !pink[s];
+	requires !observedred[s];
+	requires !term;
+	requires s == root ==> (\forall int v; 0 <= v && v < N && v != root; !pink[v]);
+	requires exploringred;
+	requires Master.ExPath(N, G, root, s, 1);
+	ensures color == \old(color);
+	ensures (\forall int v; 0 <= v && v < N && \old(observedred[v]); observedred[v]); // `old(Red) ⊆ Red`
+	ensures \result == Master.found() || \result == Master.notfound() || \result == Master.aborted(); // return types
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N; pink[v] == \old(pink[v])); // `¬found ⇒ old(Pink) = Pink`
+	ensures \result == Master.notfound() ==> observedred[s];
+	ensures (\result == Master.notfound() && s == root) ==> (\forall int v; 0 <= v && v < N && v != root; !pink[v]);
+	ensures \result == Master.notfound() ==> (A[s] == !exploringred);
+	ensures \result == Master.found() ==> (0 <= c && c < N && color[c] == Master.cyan());
+	ensures \result == Master.found() ==> (1 < |P| && Master.Path(N, G, s, c, P));
+	ensures \result == Master.aborted() ==> term;
+	ensures \result != Master.aborted() ==> !term;
+	int dfsred(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s, int root) {
+		update_setpink(N, G, A, blueroot, s);
+		assert A[s] ==> s == root;
+
+		int found = Master.notfound();
+		int t = 0;
+		
+		assert !term;
+		
+		// The parallel algorithm should actually traverse the successors of `s` in random order to obtain any speedup.
+		// However, from a verification point-of-view this does not matter, as long as all successors have been
+		// considered when the while-loop below terminates.
+		
+		loop_invariant 0 <= t && t <= N;
+		loop_invariant color == \old(color);
+		loop_invariant (\forall int v; 0 <= v && v < N && \old(observedred[v]); observedred[v]); // `old(Red) ⊆ Red`
+		loop_invariant found == Master.found() || found == Master.notfound() || found == Master.aborted(); // return types
+		loop_invariant found == Master.notfound() ==> pink[s]; // `s ∈ Pink`
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && v != s; pink[v] == \old(pink[v])); // `¬found ⇒ old(Pink - {s}) = Pink - {s}`
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < t && G[s][v]; observedred[v] || pink[v]); // needed for invariant 2
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < t && G[s][v]; color[v] != Master.cyan()); // needed for invariant 2
+		loop_invariant (found == Master.notfound() && s == root) ==> (\forall int v; 0 <= v && v < N && v != root; !pink[v]);
+		loop_invariant found == Master.notfound() ==> exploringred;
+		loop_invariant found == Master.found() ==> (0 <= c && c < N && color[c] == Master.cyan());
+		loop_invariant found == Master.found() ==> (1 < |P| && Master.Path(N, G, s, c, P));
+		loop_invariant found == Master.aborted() ==> term;
+		loop_invariant found != Master.aborted() ==> !term;
+		while (t < N && found == Master.notfound()) {
+			// check for global termination
+			boolean aborting = update_abort(N, G, A, blueroot);
+			if (aborting) {
+				found = Master.aborted();
+			}
+			
+			if (G[s][t] && found != Master.aborted()) {
+				if (color[t] == Master.cyan()) {
+					c = t;
+					P = seq<int> { s, t };
+					found = Master.found();
+				}
+				else {
+					if (!pink[t]) {
+						update_redmarkers(N, G, A, blueroot, t);
+						if (!observedred[t]) {
+							assert !A[t];
+							Master.lemma_edge_path_m(N, G, s, t);
+							Master.lemma_expath_trans_m(N, G, root, s, t, 1, 1);
+							
+							found = dfsred(N, G, A, blueroot, t, root) with { c = c; P = P; };
+							if (found == Master.found()) {
+								P = seq<int> { s } + P; 
+							}
+						}
+					}
+				}
+			}
+			
+			t = t + 1;
+		}
+		
+		if (found == Master.notfound()) {
+			if (A[s]) {
+				assert s == root;
+				update_setwaiting(N, G, A, blueroot);
+				update_setred_await(N, G, A, blueroot);
+			}
+			else {
+				update_setred(N, G, A, blueroot, s);
+			}
+		}
+		
+		return found;
+	}
+	//int dfsred(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s, int root);
+	
+	
+	/* ** DFS blue */
+	
+	/// verification takes: 56997 ms
+	/// verification takes: 58683 ms (with termination handling)
+	yields int a; // explicit witness
+	yields seq<int> P; // explicit witness
+	invariant MasterState(this, N, G, A, blueroot);
+	invariant Master.AdjacencyMatrix(N, G) && |A| == N;
+	invariant Perm(color, 1/2) ** |color| == N;
+	invariant Perm(pink, 1/2) ** |pink| == N;
+	invariant Perm(observedred, 1/2) ** |observedred| == N;
+	invariant Perm(exploringred, 1/2);
+	invariant Perm(waiting, 1/2);
+	invariant Perm(redroot, 1/2);
+	invariant 0 <= s && s < N; 
+	invariant 0 <= blueroot && blueroot < N;
+	invariant Master.ColorTypes(color);
+	invariant Master.Invariant1b(N, G, color, pink, observedred);
+	invariant Master.Invariant3(N, G, A, color, observedred);
+	requires color[s] == Master.white();
+	requires !observedred[s];
+	requires (\forall int v; 0 <= v && v < N; !pink[v]); // `Pink = Ø`
+	requires Master.Invariant1a(N, G, color, observedred);
+	requires (\forall int v; 0 <= v && v < N && observedred[v]; color[v] != Master.cyan()); // `Red ⊆ G - Cyan`
+	requires !exploringred;
+	requires !term;
+	requires (\forall int v; 0 <= v && v < N && color[v] == Master.cyan(); Master.ExPath(N, G, v, s, 1));
+	ensures (\forall int v; 0 <= v && v < N && \old(color[v]) == Master.blue(); color[v] == Master.blue()); // `old(Blue) ⊆ Blue`
+	ensures (\forall int v; 0 <= v && v < N && \old(observedred[v]); observedred[v]); // `old(Red) ⊆ Red`
+	ensures \result == Master.found() || \result == Master.notfound() || \result == Master.aborted(); // return types
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && color[v] == Master.cyan(); \old(color[v]) == Master.cyan());
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && \old(color[v]) == Master.cyan(); color[v] == Master.cyan());
+	ensures \result == Master.notfound() ==> color[s] == Master.blue();
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N; !pink[v]); // `Pink = Ø`
+	ensures \result == Master.notfound() ==> Master.Invariant1a(N, G, color, observedred);
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && observedred[v]; color[v] != Master.cyan()); // `Red ⊆ G - Cyan`
+	ensures \result == Master.notfound() ==> !exploringred;
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && color[v] == Master.cyan(); Master.ExPath(N, G, v, s, 1));
+	ensures \result == Master.found() ==> (0 <= a && a < N && A[a]);
+	ensures \result == Master.found() ==> (Master.Path(N, G, s, a, P) && Master.ExPath(N, G, a, a, 2));
+	ensures \result == Master.aborted() ==> term;
+	ensures \result != Master.aborted() ==> !term;
+	int dfsblue(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s) {
+		update_setcyan(N, G, A, blueroot, s);
+		assert Master.ExPath(N, G, s, s, |seq<int> { s }|);
+		
+		int found = Master.notfound();
+		int t = 0;
+		
+		// The parallel algorithm should actually traverse the successors of `s` in random order to obtain any speedup.
+		// However, from a verification point-of-view this is irrelevant, as long as all successors have been
+		// considered when the while-loop below terminates.
+		
+		loop_invariant 0 <= t && t <= N;
+		loop_invariant (\forall int v; 0 <= v && v < N && \old(color[v]) == Master.blue(); color[v] == Master.blue()); // `old(Blue) ⊆ Blue`
+		loop_invariant (\forall int v; 0 <= v && v < N && \old(observedred[v]); observedred[v]); // `old(Red) ⊆ Red`
+		loop_invariant found == Master.found() || found == Master.notfound() || found == Master.aborted(); // return types
+		loop_invariant found == Master.notfound() ==> (\forall int i; 0 <= i && i < N && i != s; (color[i] == Master.cyan()) == (\old(color[i]) == Master.cyan()));
+		loop_invariant found == Master.notfound() ==> color[s] == Master.cyan();
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < t && G[s][v]; color[v] == Master.cyan() || color[v] == Master.blue() || observedred[v]);
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N; !pink[v]);
+		loop_invariant found == Master.notfound() ==> Master.Invariant1a(N, G, color, observedred);
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && observedred[v]; color[v] != Master.cyan()); // `¬found ⇒ Red ⊆ G - Cyan`
+		loop_invariant found == Master.notfound() ==> !exploringred;
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && color[v] == Master.cyan(); Master.ExPath(N, G, v, s, 1));
+		loop_invariant found == Master.found() ==> (0 <= a && a < N && A[a]);
+		loop_invariant found == Master.found() ==> (Master.Path(N, G, s, a, P) && Master.ExPath(N, G, a, a, 2));
+		loop_invariant found == Master.aborted() ==> term;
+		loop_invariant found != Master.aborted() ==> !term;
+		while (t < N && found == Master.notfound()) {
+			// check for global termination
+			boolean aborting = update_abort(N, G, A, blueroot);
+			if (aborting) {
+				found = Master.aborted();
+			}
+			
+			if (G[s][t] && found != Master.aborted()) {
+				if (color[t] == Master.cyan() && (A[s] || A[t])) {
+					found = Master.found(); // early cycle detection
+					if (A[s]) {
+						a = s;
+						P = seq<int> { a };
+						Master.lemma_edge_path_m(N, G, a, t);
+						Master.lemma_expath_trans_m(N, G, a, t, a, 2, 1);
+					}
+					else {
+						assert A[t];
+						a = t;
+						P = seq<int> { s, a };
+						Master.lemma_edge_path_m(N, G, s, a);
+						Master.lemma_expath_trans_m(N, G, a, s, a, 2, 1);
+					}
+				}
+			
+				if (found == Master.notfound()) {
+					if (color[t] == Master.white()) {
+						update_redmarkers(N, G, A, blueroot, t);
+						
+						if (!observedred[t]) {
+							Master.lemma_nextcyan_m(N, G, color, s, t);
+							found = dfsblue(N, G, A, blueroot, t) with { a = a; P = P; };
+							if (found == Master.found()) {
+								P = seq<int> { s } + P;
+							}
+						}
+					}
+				}
+			}
+
+			t = t + 1;
+		}
+		
+		if (found == Master.notfound() && A[s]) {
+			update_explorered(N, G, A, blueroot, s);
+			assert (\forall int v; 0 <= v && v < N && v != s && observedred[v]; color[v] != Master.cyan()); // needed
+
+			if (!observedred[s]) {
+				int c;
+				seq<int> Q;
+				found = dfsred(N, G, A, blueroot, s, s) with { c = c; P = Q; };
+			
+				if (found == Master.found()) {
+					Master.lemma_cyclefoundhere_m(N, G, color, s, c, Q);
+					a = s;
+					P = seq<int> { s };
+				}
+			}
+		}
+		
+		if (found == Master.notfound()) {
+			update_setblue(N, G, A, blueroot, s);
+		}
+
+		return found;
+	}
+	//int dfsblue(int N, seq<seq<boolean>> G, seq<boolean> A, int blueroot, int s);
+}
+
+class Master {
+	
+	/** ** Global state */
+	
+	int N; // total number of states
+	seq<seq<boolean>> G; // adjacency matrix representation of the input graph
+	seq<boolean> A; // the (finite) set of accepting states
+	seq<boolean> red; // set of red states
+	seq<int> redowner; // for bookkeeping: if `red[v] == true`, then `redowner[v]` contains the rank of the worker that has marked node `v` red
+	seq<Worker> threads; // worker set
+	boolean abort; // global termination flag
+	int blueroot; // the initial state from which all threads perform NDFS
+	int result; // result of NDFS
+	
+	resource lock_invariant() =
+		// graph state
+		Perm(N, read) ** Perm(G, read) ** AdjacencyMatrix(N, G) **
+		Perm(A, read) ** |A| == N **
+		Perm(blueroot, read) ** 0 <= blueroot ** blueroot < N **
+		Perm(red, 1) ** |red| == N **
+		Perm(redowner, 1) ** |redowner| == N **
+		
+		// state of threads
+		Perm(threads, read) ** 0 < |threads| **
+		(\forall int t; 0 <= t && t < |threads|;
+			threads[t] != null
+		) **
+		(\forall* int t; 0 <= t && t < |threads|;
+			Perm(threads[t].master, read) **
+			Perm(threads[t].tid, read) **
+			Perm(threads[t].nthreads, read) ** 
+			Perm(threads[t].color, 1/2) **
+			Perm(threads[t].observedred, 1/2) **
+			Perm(threads[t].pink, 1/2) **
+			Perm(threads[t].exploringred, 1/2) **
+			Perm(threads[t].waiting, 1/2) **
+			Perm(threads[t].term, 1/2) **
+			Perm(threads[t].redroot, 1/2)
+		) **
+		(\forall int t; 0 <= t && t < |threads|;
+			threads[t].master == this &&
+			threads[t].tid == t &&
+			threads[t].nthreads == |threads|
+		) **
+		(\forall int t; 0 <= t && t < |threads|;
+			|threads[t].color| == N &&
+			|threads[t].observedred| == N &&
+			|threads[t].pink| == N
+		) **
+		
+		// state of red nodes
+		(\forall int t; 0 <= t && t < |threads|;
+			(\forall int v; 0 <= v && v < N && threads[t].observedred[v]; red[v])
+		) **
+		(\forall int v; 0 <= v && v < N && red[v];
+			0 <= redowner[v] && redowner[v] < |threads| &&
+			threads[redowner[v]].observedred[v] &&
+			threads[redowner[v]].color[v] != white()
+		) **
+		
+		// PNDFS invariants
+		(\forall int t; 0 <= t && t < |threads|;
+			ColorTypes(threads[t].color) &&
+			ThreadLocalInvariants(N, G, A, threads[t].color, threads[t].pink, red)
+		) **
+		(\forall int v; 0 <= v && v < N && red[v];
+			(\forall int w; 0 <= w && w < N && G[v][w];
+				red[w] || (threads[redowner[v]].pink[w] && threads[redowner[v]].color[w] != cyan()) // Invariant 2
+			)
+		) **
+		Invariant6(N, G, A, red) **
+		KeyInvariant(N, G, A, threads, red, blueroot) **
+		
+		// `dfsred` worker statusses
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred; 0 <= threads[t].redroot && threads[t].redroot < N) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred; A[threads[t].redroot]) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred && !threads[t].waiting; !red[threads[t].redroot]) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred && threads[t].waiting; threads[t].pink[threads[t].redroot]) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred && threads[t].waiting; (\forall int v; 0 <= v && v < N && v != threads[t].redroot; !threads[t].pink[v])) **
+		(\forall int t; 0 <= t && t < |threads| && !threads[t].exploringred; (\forall int v; 0 <= v && v < N; !threads[t].pink[v])) **
+		(\forall int t; 0 <= t && t < |threads|; (\forall int p; 0 <= p && p < N && threads[t].pink[p] && A[p]; threads[t].exploringred && threads[t].redroot == p)) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred; (\forall int p; 0 <= p && p < N && threads[t].pink[p]; Master.ExPath(N, G, threads[t].redroot, p, 1))) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred; (\forall int c; 0 <= c && c < N && threads[t].color[c] == Master.cyan(); Master.ExPath(N, G, c, threads[t].redroot, 1))) **
+		(\forall int t; 0 <= t && t < |threads| && threads[t].exploringred && threads[t].waiting; (\forall int v; 0 <= v && v < N && G[threads[t].redroot][v]; red[v] && threads[t].color[v] != Master.cyan())) **
+		
+		// termination handling
+		Perm(abort, 1/2) **
+		(\forall int t; 0 <= t && t < |threads|; threads[t].term ==> abort);
+		
+
+	requires 0 < nthreads;
+	requires AdjacencyMatrix(N_, G_) && |A_| == N_;
+	requires 0 <= root && root < N_;
+	ensures Perm(N, read) ** N == N_;
+	ensures Perm(G, read) ** G == G_;
+	ensures Perm(A, read) ** A == A_;
+	ensures AdjacencyMatrix(N, G) && |A| == N;
+	ensures Perm(blueroot, read) ** blueroot == root;
+	ensures 0 <= blueroot && blueroot < N;
+	ensures Perm(threads, read) ** |threads| == nthreads;
+	ensures Perm(abort, 1/2) ** !abort;
+	ensures (\forall* int t; 0 <= t && t < nthreads;
+		Perm(threads[t].master, read) ** threads[t].master == this **
+		Perm(threads[t].tid, read) ** threads[t].tid == t **
+		Perm(threads[t].nthreads, read) ** threads[t].nthreads == nthreads **
+		Perm(threads[t].color, 1/2) ** threads[t].color == NewIntSeq(N) **
+		Perm(threads[t].observedred, 1/2) ** threads[t].observedred == NewBoolSeq(N) **
+		Perm(threads[t].pink, 1/2) ** threads[t].pink == NewBoolSeq(N) **
+		Perm(threads[t].exploringred, 1/2) ** !threads[t].exploringred **
+		Perm(threads[t].waiting, 1/2) ** !threads[t].waiting **
+		Perm(threads[t].term, 1/2) ** !threads[t].term **
+		Perm(threads[t].redroot, 1/2)
+	);
+	Master(int N_, seq<seq<boolean>> G_, seq<boolean> A_, int root, int nthreads) {
+		N = N_;
+		G = G_;
+		A = A_;
+		
+		blueroot = root;
+		red = NewBoolSeq(N);
+		redowner = NewIntSeq(N);
+		threads = seq<Worker> { };
+		
+		int tid = 0;
+		
+		// construct the worker set
+		loop_invariant 0 <= tid && tid <= nthreads;
+		loop_invariant Perm(N, 1) ** N == N_;
+		loop_invariant Perm(G, 1) ** G == G_;
+		loop_invariant Perm(A, 1) ** A == A_;
+		loop_invariant Perm(red, 1) ** red == NewBoolSeq(N);
+		loop_invariant Perm(redowner, 1) ** redowner == NewIntSeq(N);
+		loop_invariant AdjacencyMatrix(N, G) && |A| == N;
+		loop_invariant 0 <= root && root < N;
+		loop_invariant Perm(blueroot, 1) ** blueroot == root;
+		loop_invariant Perm(threads, 1) ** |threads| == tid;
+		loop_invariant (\forall* int t; 0 <= t && t < tid;
+			Perm(threads[t].master, 1) ** threads[t].master == this **
+			Perm(threads[t].tid, 1) ** threads[t].tid == t **
+			Perm(threads[t].nthreads, 1) ** threads[t].nthreads == nthreads **
+			Perm(threads[t].color, 1) ** threads[t].color == NewIntSeq(N) **
+			Perm(threads[t].observedred, 1) ** threads[t].observedred == NewBoolSeq(N) **
+			Perm(threads[t].pink, 1) ** threads[t].pink == NewBoolSeq(N) **
+			Perm(threads[t].exploringred, 1) ** !threads[t].exploringred **
+			Perm(threads[t].waiting, 1) ** !threads[t].waiting **
+			Perm(threads[t].term, 1) ** !threads[t].term **
+			Perm(threads[t].redroot, 1)
+		);
+		loop_invariant (\forall int t; 0 <= t && t < tid;
+			ColorTypes(threads[t].color) &&
+			ThreadLocalInvariants(N, G, A, threads[t].color, threads[t].pink, red)
+		);
+		while (tid < nthreads) {
+			Worker thread = new Worker();
+			thread.master = this;
+			thread.tid = tid;
+			thread.nthreads = nthreads;
+			thread.color = NewIntSeq(N);
+			thread.observedred = NewBoolSeq(N);
+			thread.pink = NewBoolSeq(N);
+			thread.exploringred = false;
+			thread.waiting = false;
+			thread.term = false;
+			threads = threads + seq<Worker> { thread };
+			tid = tid + 1;
+		}
+		
+		abort = false;
+	}
+	
+	
+	/* ** NDFS color codes */
+	
+	static pure int white() = 0;
+	static pure int cyan() = 1;
+	static pure int blue() = 2;
+	
+	
+	/* ** NDFS return types */
+	
+	static pure int notfound() = 0;
+	static pure int found() = 1;
+	static pure int aborted() = 2;
+	
+	
+	/** ** Default predicates */
+	
+	// determines whether `G` is an adjacency matrix of size `N`
+	static inline pure boolean AdjacencyMatrix(int N, seq<seq<boolean>> G) =
+		|G| == N && (\forall seq<boolean> e; e in G; |e| == N);
+		
+	// determines whether the given color set has the proper colors
+	static inline pure boolean ColorTypes(seq<int> color) =
+		(\forall int i; 0 <= i && i < |color|; color[i] == white() || color[i] == cyan() || color[i] == blue());
+	
+	// determines whether `P` is a path from `x` to `y` in the graph `G`.
+	requires AdjacencyMatrix(N, G);
+	static pure boolean Path(int N, seq<seq<boolean>> G, int x, int y, seq<int> P) =
+		0 <= x && x < N && 0 <= y && y < N &&
+		0 < |P| && P[0] == x && P[|P| - 1] == y &&
+		(\forall int j; 0 <= j && j < |P|; 0 <= P[j] && P[j] < N) &&
+		(\forall int j; 0 <= j && j < |P| - 1; G[P[j]][P[j + 1]]);
+	
+	// Shorthand notation for paths.
+	static pure inline boolean Path(int N, seq<seq<boolean>> G, seq<int> P) = Path(N, G, P[0], P[|P|-1], P);
+	
+	// existential quantification over paths in `G` of length at least `len`.
+	requires AdjacencyMatrix(N, G);
+	static pure boolean ExPath(int N, seq<seq<boolean>> G, int x, int y, int len) =
+		(\exists seq<int> P; len <= |P|; Path(N, G, x, y, P));
+	
+	// A _special path_ is defined to be a path `P` starting with a pink node and ending with a cyan node, so that all states on `P` are not red.
+	requires AdjacencyMatrix(N, G) && |color| == N && |pink| == N && |red| == N;
+	requires 1 < |P| && Path(N, G, P);
+	static pure boolean SpecialPath(int N, seq<seq<boolean>> G, seq<int> P, seq<int> color, seq<boolean> pink, seq<boolean> red) =
+		pink[P[0]] && color[P[|P| - 1]] == cyan() && (\forall int i; 0 <= i && i < |P|; !red[P[i]]);
+		
+	// Existential quantification of "special" paths
+	requires AdjacencyMatrix(N, G) && |color| == N && |pink| == N && |red| == N;
+	static pure boolean ExSpecialPath(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> pink, seq<boolean> red) =
+		(\exists seq<int> P; 1 < |P| && Path(N, G, P); SpecialPath(N, G, P, color, pink, red));
+
+	// Determines the existence of an accepting cycle from `root` to the accepting state `a`
+	requires AdjacencyMatrix(N, G) && |A| == N;
+	requires 0 <= root && root < N;
+	requires 0 <= a && a < N && A[a];
+	static pure boolean ExAccCycle(int N, seq<seq<boolean>> G, seq<boolean> A, int root, int a) =
+		ExPath(N, G, root, a, 1) && ExPath(N, G, a, a, 2);
+
+	
+	/* ** Default operations */
+	
+	// some workaround definitions
+	static inline pure boolean GetBool(seq<boolean> xs, int i) = xs[i];
+	static inline pure int GetInt(seq<int> xs, int i) = xs[i];
+	
+	requires 0 <= i && i < |xs|;
+	ensures |\result| == |xs|;
+	ensures \result[i] == v;
+	ensures (\forall int j; 0 <= j && j < |xs| && j != i; \result[j] == xs[j]);
+	pure static seq<int> UpdateInt(seq<int> xs, int i, int v) =
+		0 < i ? seq<int> { head(xs) } + UpdateInt(tail(xs), i - 1, v) : seq<int> { v } + tail(xs);
+
+	requires 0 <= i && i < |xs|;
+	ensures |\result| == |xs|;
+	ensures \result[i] == v;
+	ensures (\forall int j; 0 <= j && j < |xs| && j != i; \result[j] == xs[j]);
+	pure static seq<boolean> UpdateBool(seq<boolean> xs, int i, boolean v) =
+		0 < i ? seq<boolean> { head(xs) } + UpdateBool(tail(xs), i - 1, v) : seq<boolean> { v } + tail(xs);
+	
+	// constructs a fresh color set containing `n` white colors.
+	requires 0 <= n;
+	ensures |\result| == n;
+	ensures (\forall int i; 0 <= i && i < n; \result[i] == white());
+	pure static seq<int> NewIntSeq(int n) =
+		0 < n ? seq<int> { white() } + NewIntSeq(n - 1) : seq<int> { };
+		
+	// constructs a fresh color set containing `n` white colors.
+	requires 0 <= n;
+	ensures |\result| == n;
+	ensures (\forall int i; 0 <= i && i < n; !\result[i]);
+	pure static seq<boolean> NewBoolSeq(int n) =
+		0 < n ? seq<boolean> { false } + NewBoolSeq(n - 1) : seq<boolean> { };
+	
+	// skips the first `n` elements of the integer sequence `xs`.
+	requires 0 <= n && n <= |xs|;
+	ensures |\result| == |xs| - n;
+	ensures (\forall int i; 0 <= i && i < |xs| - n; xs[n + i] == \result[i]);
+	pure static seq<int> SkipInt(seq<int> xs, int n) =
+		0 < n ? SkipInt(tail(xs), n - 1) : xs;
+
+	// takes the first `n` elements of the integer sequence `xs`.
+	requires 0 <= n && n <= |xs|;
+	ensures |\result| == n;
+	ensures (\forall int i; 0 <= i && i < n; xs[i] == \result[i]);
+	pure static seq<int> TakeInt(seq<int> xs, int n) =
+		0 < n ? seq<int> { head(xs) } + TakeInt(tail(xs), n - 1) : seq<int> { };
+	
+	// Helper method to extract a color matrix from a set of workers.
+	requires 0 <= j && j <= |threads|;
+	requires (\forall* int i; 0 <= i && i < |threads|; threads[i] != null ** Perm(threads[i].color, 1/2));
+	ensures |\result| == |threads| - j;
+	ensures (\forall int i; 0 <= i && i < |\result|; \result[i] == threads[j + i].color);
+	static pure seq<seq<int>> ExtractColorsHelper(seq<Worker> threads, int j) =
+		j < |threads| ?
+			seq<seq<int>> { threads[j].color } + ExtractColorsHelper(threads, j + 1) :
+			seq<seq<int>> { };
+
+	// Helper method to extract a pink matrix from a set of workers.
+	requires 0 <= j && j <= |threads|;
+	requires (\forall* int i; 0 <= i && i < |threads|; threads[i] != null ** Perm(threads[i].pink, 1/2));
+	ensures |\result| == |threads| - j;
+	ensures (\forall int i; 0 <= i && i < |\result|; \result[i] == threads[j + i].pink);
+	static pure seq<seq<boolean>> ExtractPinkHelper(seq<Worker> threads, int j) =
+		j < |threads| ?
+			seq<seq<boolean>> { threads[j].pink } + ExtractPinkHelper(threads, j + 1) :
+			seq<seq<boolean>> { };
+
+	// Gives a matrix representation of the colors of the given set of workers.
+	requires (\forall* int i; 0 <= i && i < |threads|; threads[i] != null ** Perm(threads[i].color, 1/2));
+	ensures |\result| == |threads|;
+	ensures (\forall int i; 0 <= i && i < |threads|; \result[i] == threads[i].color);
+	static pure seq<seq<int>> ExtractColors(seq<Worker> threads) = ExtractColorsHelper(threads, 0);
+
+	// Gives a matrix representation of the pink colorings of the given set of workers.
+	requires (\forall* int i; 0 <= i && i < |threads|; threads[i] != null ** Perm(threads[i].pink, 1/2));
+	ensures |\result| == |threads|;
+	ensures (\forall int i; 0 <= i && i < |threads|; \result[i] == threads[i].pink);
+	static pure seq<seq<boolean>> ExtractPink(seq<Worker> threads) = ExtractPinkHelper(threads, 0);
+	
+	
+	/* ** Standard properties of paths */
+
+	requires AdjacencyMatrix(N, G) && Path(N, G, x, y, P);
+	ensures \result && ExPath(N, G, x, y, |P|);
+	pure static boolean lemma_expath(int N, seq<seq<boolean>> G, int x, int y, seq<int> P) = true;
+
+	requires AdjacencyMatrix(N, G) && Path(N, G, x, y, P);
+	ensures ExPath(N, G, x, y, |P|);
+	static void lemma_expath_m(int N, seq<seq<boolean>> G, int x, int y, seq<int> P) {
+		assert lemma_expath(N, G, x, y, P);
+	}
+
+	requires AdjacencyMatrix(N, G);
+	requires Path(N, G, s, t, P);
+	requires Path(N, G, t, u, Q);
+	ensures \result && Path(N, G, s, u, P + tail(Q));
+	pure static boolean lemma_path_trans(int N, seq<seq<boolean>> G, int s, int t, int u, seq<int> P, seq<int> Q) = true;
+
+	requires AdjacencyMatrix(N, G);
+	requires ExPath(N, G, s, t, len1);
+	requires ExPath(N, G, t, u, len2);
+	ensures \result && ExPath(N, G, s, u, len1 + len2 - 1);
+	pure static boolean lemma_expath_trans(int N, seq<seq<boolean>> G, int s, int t, int u, int len1, int len2) =
+		(\forall seq<int> P; Path(N, G, s, t, P);
+			(\forall seq<int> Q; Path(N, G, t, u, Q);
+				lemma_path_trans(N, G, s, t, u, P, Q)));
+		
+	requires AdjacencyMatrix(N, G);
+	requires ExPath(N, G, s, t, len1);
+	requires ExPath(N, G, t, u, len2);
+	ensures ExPath(N, G, s, u, len1 + len2 - 1);		
+	static void lemma_expath_trans_m(int N, seq<seq<boolean>> G, int s, int t, int u, int len1, int len2) {
+		assert lemma_expath_trans(N, G, s, t, u, len1, len2);
+	}
+
+	requires AdjacencyMatrix(N, G);
+	requires 0 <= s && s < N;
+	requires 0 <= t && t < N;
+	requires G[s][t];
+	ensures \result && ExPath(N, G, s, t, 2);
+	pure static boolean lemma_edge_path(int N, seq<seq<boolean>> G, int s, int t) =
+		Path(N, G, s, t, seq<int> { s, t });
+		
+	requires AdjacencyMatrix(N, G);
+	requires 0 <= s && s < N;
+	requires 0 <= t && t < N;
+	requires G[s][t];
+	ensures ExPath(N, G, s, t, 2);
+	static void lemma_edge_path_m(int N, seq<seq<boolean>> G, int s, int t) {
+		assert lemma_edge_path(N, G, s, t);
+	}
+	
+	requires AdjacencyMatrix(N, G) && |color| == N && |pink| == N && |red| == N;
+	requires 1 < |P| && Path(N, G, P);
+	requires SpecialPath(N, G, P, color, pink, red);
+	ensures ExSpecialPath(N, G, color, pink, red);
+	ensures \result;
+	static pure boolean lemma_specialpath_ex(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> pink, seq<boolean> red, seq<int> P) = true;
+	
+
+	/* ** Auxiliary lemmas */
+
+	// Lemma: If `P` is an `(x,y)`-path, `x` is blue and all successors of blue states are blue, then `y` must consequently also be blue.
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires Path(N, G, x, y, P);
+	requires C1[x] == blue();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	ensures \result && C1[y] == blue();
+	pure static boolean lemma_reachblue(int N, seq<seq<boolean>> G, seq<int> C1, int x, int y, seq<int> P) =
+		1 < |P| ==> lemma_reachblue(N, G, C1, P[1], y, tail(P));
+
+	// Lemma: If there is an edge between nodes `s` and `t`, then all paths from any cyan state `v` to `s` can be extended to a `(v,t)`-path.
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 0 <= s && s < N && 0 <= t && t < N && G[s][t];
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, t, 1));
+	ensures \result;
+	pure static boolean lemma_nextcyan(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t) = 
+		(\forall int v; 0 <= v && v < N && C1[v] == cyan();
+			lemma_edge_path(N, G, s, t) && lemma_expath_trans(N, G, v, s, t, 1, 1));
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 0 <= s && s < N && 0 <= t && t < N && G[s][t];
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, t, 1));
+	static void lemma_nextcyan_m(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t) {
+		assert lemma_nextcyan(N, G, C1, s, t);
+	}
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 1 < |P| && Path(N, G, s, t, P);
+	requires C1[t] == cyan();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures ExPath(N, G, s, s, 2);
+	ensures \result;
+	pure static boolean lemma_cyclefoundhere(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t, seq<int> P) =
+		lemma_expath_trans(N, G, s, t, s, 2, 1);
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 1 < |P| && Path(N, G, s, t, P);
+	requires C1[t] == cyan();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures ExPath(N, G, s, s, 2);
+	static void lemma_cyclefoundhere_m(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t, seq<int> P) {
+		assert lemma_cyclefoundhere(N, G, C1, s, t, P);
+	}
+	
+	
+	/* ** Color invariants */
+	
+	// `Next(Blue, Blue ∪ Cyan ∪ Red)`
+	static inline pure boolean Invariant1a(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> red) =
+		(\forall int v; 0 <= v && v < N && color[v] == blue();
+			(\forall int w; 0 <= w && w < N && G[v][w];
+				color[w] == blue() || color[w] == cyan() || red[w]));
+	
+	// `Next(Pink, Blue ∪ Cyan ∪ Red)`
+	static inline pure boolean Invariant1b(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> pink, seq<boolean> red) =
+		(\forall int v; 0 <= v && v < N && pink[v];
+			(\forall int w; 0 <= w && w < N && G[v][w];
+				color[w] == blue() || color[w] == cyan() || red[w]));
+	
+	// `A ∩ Blue ⊆ Red`
+	static inline pure boolean Invariant3(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> color, seq<boolean> red) =
+		(\forall int v; 0 <= v && v < N && A[v] && color[v] == blue(); red[v]);
+
+	// `A ∩ Pink ⊆ Cyan`
+	static inline pure boolean Invariant4(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> color, seq<boolean> pink) =
+		(\forall int v; 0 <= v && v < N && A[v] && pink[v]; color[v] == cyan());
+				
+	// `Pink ⊆ Cyan ∪ Blue`
+	static inline pure boolean Invariant5(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> pink) =
+		(\forall int v; 0 <= v && v < N && pink[v]; color[v] == cyan() || color[v] == blue());
+
+	// `Next(A ∩ Red, Red)`
+	static inline pure boolean Invariant6(int N, seq<seq<boolean>> G, seq<boolean> A, seq<boolean> red) =
+		(\forall int v; 0 <= v && v < N && A[v] && red[v];
+			(\forall int w; 0 <= w && w < N && G[v][w]; red[w]));
+	
+	// Bundle of thread-local invariants (for improving performance)
+	requires AdjacencyMatrix(N, G);
+	requires |A| == N && |color| == N && |pink| == N && |red| == N;
+	static pure boolean ThreadLocalInvariants(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> color, seq<boolean> pink, seq<boolean> red) =
+		Invariant1a(N, G, color, red) &&
+		Invariant1b(N, G, color, pink, red) &&
+		Invariant3(N, G, A, color, red) &&
+		Invariant4(N, G, A, color, pink) &&
+		Invariant5(N, G, color, pink);
+		
+	// completeness of the parallel NDFS algorithm follows from this invariant, consisting of three cases:
+	static inline pure boolean KeyInvariant(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, int blueroot) = (
+		(\forall int a; 0 <= a && a < N && acc[a] && ExAccCycle(N, G, acc, blueroot, a); !red[a]) ||
+		(\exists int t; 0 <= t && t < |threads|; ExSpecialPath(N, G, threads[t].color, threads[t].pink, red))
+	);
+	
+	
+	/* ** Lemmas for establishing completeness */
+	
+	/* *** Finding special paths */
+	
+	// Gives the position in `P` of the last red state that occurs in the path `P`
+	requires AdjacencyMatrix(N, G) && |red| == N;
+	requires 0 < |P| && Path(N, G, P);
+	requires !(\forall int i; 0 <= i && i < |P|; !red[P[i]]);
+	ensures 0 <= \result && \result < |P| && red[P[\result]];
+	ensures (\forall int i; \result < i && i < |P|; !red[P[i]]);
+	/* pure static int lemma_lastred(int N, seq<seq<boolean>> G, seq<boolean> red, seq<int> P) =
+		(\forall int i; 0 < i && i < |P|; !red[P[i]]) ? 0 : 1 + lemma_lastred(N, G, red, tail(P)); */
+	pure static int lemma_lastred(int N, seq<seq<boolean>> G, seq<boolean> red, seq<int> P);
+	
+	// Skips elements from `P` up to the last red element in `P`. So the resulting sequence
+	// is a path in `G`, where `head(\result)` is a red node the path `tail(\result)` are all not red.
+	requires AdjacencyMatrix(N, G) && |red| == N;
+	requires 0 < |P| && Path(N, G, P);
+	requires !(\forall int i; 0 <= i && i < |P|; !red[P[i]]);
+	ensures \result == SkipInt(P, lemma_lastred(N, G, red, P));
+	ensures \result[|\result|-1] == P[|P| - 1];
+	ensures 0 < |\result| && Path(N, G, \result);
+	ensures red[head(\result)];
+	ensures (\forall int i; 0 < i && i < |\result|; !red[\result[i]]);
+	/* pure static seq<int> lemma_skip_until_lastred(int N, seq<seq<boolean>> G, seq<boolean> red, seq<int> P) =
+		SkipInt(P, lemma_lastred(N, G, red, P)); */
+	pure static seq<int> lemma_skip_until_lastred(int N, seq<seq<boolean>> G, seq<boolean> red, seq<int> P);
+	
+	// Finds the index of the first cyan state in the path `P`.
+	// Such a state must exist due to Invariant 1a and some coloring requirements.
+	requires AdjacencyMatrix(N, G) && |color| == N && |red| == N;
+	requires 0 < |P| && Path(N, G, P);
+	requires color[head(P)] == cyan() || color[head(P)] == blue();
+	requires (\forall int i; 0 <= i && i < |P|; !red[P[i]]);
+	requires color[P[|P| - 1]] != blue();
+	requires Invariant1a(N, G, color, red);
+	ensures 0 <= \result && \result < |P|;
+	ensures (\forall int i; 0 <= i && i < \result - 1; color[P[i]] == blue());
+	ensures color[P[\result]] == cyan();
+	/* static pure int lemma_firstcyan(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> red, seq<int> P) =
+		color[P[0]] == cyan() ? 0 : 1 + lemma_firstcyan(N, G, color, red, tail(P)); */
+	static pure int lemma_firstcyan(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> red, seq<int> P);
+		
+	// Takes elements from `P` until a cyan state has been found.
+	requires AdjacencyMatrix(N, G) && |color| == N && |red| == N;
+	requires 0 < |P| && Path(N, G, P);
+	requires color[P[0]] == cyan() || color[P[0]] == blue();
+	requires !red[P[|P|-1]] && color[P[|P|-1]] != blue();
+	requires (\forall int i; 0 <= i && i < |P|; !red[P[i]]);
+	requires Invariant1a(N, G, color, red);
+	ensures \result == TakeInt(P, lemma_firstcyan(N, G, color, red, P) + 1);
+	ensures (\forall int i; 0 <= i && i < |\result|; P[i] == \result[i]);
+	ensures Path(N, G, \result);
+	ensures color[\result[|\result|-1]] == cyan();
+	/* static pure seq<int> lemma_upto_firstcyan(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> red, seq<int> P) =
+		TakeInt(P, lemma_firstcyan(N, G, color, red, P) + 1); */
+	static pure seq<int> lemma_upto_firstcyan(int N, seq<seq<boolean>> G, seq<int> color, seq<boolean> red, seq<int> P);
+	
+	// Find a special subpath in `P`, assuming that `P` is a path in `G` that has no red states (in addition to some other coloring requirements)
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 1 < |P| && Path(N, G, P);
+	requires red[P[0]] && acc[P[|P|-1]] && (\forall int i; 0 < i && i < |P|; !red[P[i]]);
+	requires ColorTypes(color[redowner[P[0]]]);
+	requires ThreadLocalInvariants(N, G, acc, color[redowner[P[0]]], pink[redowner[P[0]]], red);
+	requires (\forall int j; 0 <= j && j < N && G[P[0]][j]; red[j] || (pink[redowner[P[0]]][j] && color[redowner[P[0]]][j] != cyan())); // invariant 2, but specialised
+	ensures 0 < |\result| && Path(N, G, \result);
+	ensures pink[redowner[P[0]]][\result[0]]; // by invariant 2
+	ensures color[redowner[P[0]]][\result[0]] == blue(); // by invariant 2
+	ensures !acc[\result[0]]; // by invariant 4
+	ensures color[redowner[P[0]]][\result[|\result|-1]] == cyan();
+	ensures (\forall int i; 0 <= i && i < |\result|; !red[\result[i]]);
+	/* static pure seq<int> lemma_find_specpath_helper(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, seq<int> P) =
+		lemma_upto_firstcyan(N, G, color[redowner[P[0]]], red, tail(P)); */
+	static pure seq<int> lemma_find_specpath_helper(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, seq<int> P);
+	
+	// Shows that there exists a _special subpath_ in `P`, provided that `P` starts from a red state and ends in a non-red, accepting state.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 1 < |P| && Path(N, G, P);
+	requires red[P[0]] && !red[P[|P|-1]] && acc[P[|P|-1]];
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], pink[t], red));
+	ensures \result;
+	/* static pure boolean lemma_find_specpath(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, seq<int> P) =
+		0 < |lemma_find_specpath_helper(N, G, acc, color, pink, red, redowner, nthreads, lemma_skip_until_lastred(N, G, red, P))|; */
+	static pure boolean lemma_find_specpath(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, seq<int> P);
+	
+	// a version of `lemma_find_specpath` that takes a set of workers, instead of color matrices.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < |threads|);
+	requires (\forall int i; 0 <= i && i < |threads|; threads[i] != null);
+	requires (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].color, 1/2) ** Perm(threads[i].pink, 1/2));
+	requires (\forall int i; 0 <= i && i < |threads|; |threads[i].color| == N && |threads[i].pink| == N);
+	requires 1 < |P| && Path(N, G, P);
+	requires red[P[0]] && !red[P[|P|-1]] && acc[P[|P|-1]];
+	requires (\forall int t; 0 <= t && t < |threads|; ColorTypes(threads[t].color) && ThreadLocalInvariants(N, G, acc, threads[t].color, threads[t].pink, red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (threads[redowner[v]].pink[w] && threads[redowner[v]].color[w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < |threads|; ExSpecialPath(N, G, threads[t].color, threads[t].pink, red));
+	ensures \result;
+	/* static pure boolean lemma_find_specpath_thr(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, seq<int> P) =
+		lemma_find_specpath(N, G, acc, ExtractColors(threads), ExtractPink(threads), red, redowner, |threads|, P); */
+	static pure boolean lemma_find_specpath_thr(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, seq<int> P);
+	
+	
+	/* *** Lemmas for proving the key invariant */
+	
+	// Shows that there exists a _special subpath_ in `P`, provided that `P` starts from a red state and ends in a non-red, accepting state.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 1 < |P| && Path(N, G, P);
+	requires !(\forall int i; 0 <= i && i < |P| - 1; !red[P[i]]);
+	requires !red[P[|P|-1]] && acc[P[|P|-1]];
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], pink[t], red));
+	ensures \result;
+	/* static pure boolean lemma_find_specpath_fromany(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, seq<int> P) =
+		lemma_find_specpath(N, G, acc, color, pink, red, redowner, nthreads, lemma_skip_until_lastred(N, G, red, P)); */
+	static pure boolean lemma_find_specpath_fromany(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, seq<int> P);
+	
+	// Lemma: If `P` is a path that contains occurences of the state `r`, then making `r` red causes `P` to have red states on it.
+	requires AdjacencyMatrix(N, G) && |red| == N;
+	requires 0 < |P| && Path(N, G, P);
+	requires 0 <= r && r < N;
+	requires !(\forall int i; 0 <= i && i < |P|; P[i] != r); // the node `r` occurs at least once in `P`
+	ensures !(\forall int i; 0 <= i && i < |P|; !GetBool(UpdateBool(red, r, true), P[i])); // after updating `red` with `[r -> true]`, some of the states on `P` become red
+	ensures \result;
+	/* static pure boolean lemma_redpath_update_helper(int N, seq<seq<boolean>> G, seq<boolean> red, seq<int> P, int r) =
+		(\exists int i; 0 <= i && i < |P|; P[i] == r) &&
+		(\exists int i; 0 <= i && i < |P|; GetBool(UpdateBool(red, r, true), P[i])); */
+	static pure boolean lemma_redpath_update_helper(int N, seq<seq<boolean>> G, seq<boolean> red, seq<int> P, int r);
+	
+	// Lemma: If `r` occurs in the sequence `P`, then `r` also occurs in `P + Q`.
+	requires !(\forall int i; 0 <= i && i < |P|; P[i] != r);
+	ensures !(\forall int i; 0 <= i && i < |P + Q|; GetInt(P + Q, i) != r);
+	ensures \result;
+	/* static pure boolean lemma_pathcontains_extend(seq<int> P, seq<int> Q, int r) =
+		(\forall int i; 0 <= i && i < |P| && P[i] == r; GetInt(P + Q, i) == r); */
+	static pure boolean lemma_pathcontains_extend(seq<int> P, seq<int> Q, int r);
+
+	/* NOTE: the lemmas `lemma_LFU_1` and `lemma_LFU_2` can both be verified, but separately (not at the same time).
+		 This is not a verification error, but an error in the prover: VerCors should verify each method in isolation (i.e. function-modular).
+		 For this reason, both are commented out and assumed, but you can decomment one of them to verify the lemma. */
+
+	// Lemma: If `P` is a special path that does not contain any occurences of `r`, then there also exists a special path when we color `r` red.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= a && a < N;
+	requires 0 <= r && r < N;
+	requires 0 <= redowner[r] && redowner[r] < nthreads;
+	requires 1 < |P| && Path(N, G, P);
+	requires SpecialPath(N, G, P, color[tid], pink[tid], red);
+	requires Path(N, G, P[|P|-1], a, Q);
+	requires !red[a] && acc[a] && a != r;
+	requires (\forall int j; 0 <= j && j < |P|; P[j] != r);
+	requires (\forall int s; 0 <= s && s < N && G[r][s]; GetBool(UpdateBool(red, r, true), s) || (pink[redowner[r]][s] && color[redowner[r]][s] != cyan())); // needed to re-establish invariant 2 after the update of `red`
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], UpdateBool(pink[t], r, false), UpdateBool(red, r, true)));
+	ensures \result;
+	/* static pure boolean lemma_LFU_1(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P, seq<int> Q) =
+		SpecialPath(N, G, P, color[tid], pink[tid], UpdateBool(red, r, true)) &&
+		lemma_specialpath_ex(N, G, color[tid], pink[tid], UpdateBool(red, r, true), P); */
+	static pure boolean lemma_LFU_1(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P, seq<int> Q);
+
+	// Lemma: If `P` is a special path that does contain occurences of `r`, then there also exists a special path when we color `r` red.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= a && a < N;
+	requires 0 <= r && r < N;
+	requires 0 <= redowner[r] && redowner[r] < nthreads;
+	requires 1 < |P| && Path(N, G, P);
+	requires SpecialPath(N, G, P, color[tid], pink[tid], red);
+	requires Path(N, G, P[|P|-1], a, Q);
+	requires !red[a] && acc[a] && a != r;
+	requires !(\forall int j; 0 <= j && j < |P|; P[j] != r);
+	requires (\forall int s; 0 <= s && s < N && G[r][s]; GetBool(UpdateBool(red, r, true), s) || (pink[redowner[r]][s] && color[redowner[r]][s] != cyan())); // needed to re-establish invariant 2 after the update of `red`
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], UpdateBool(pink[t], r, false), UpdateBool(red, r, true)));
+	ensures \result;
+	/* static pure boolean lemma_LFU_2(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P, seq<int> Q) =
+		lemma_path_trans(N, G, P[0], P[|P|-1], a, P, Q) &&
+		lemma_pathcontains_extend(P, tail(Q), r) &&
+		lemma_redpath_update_helper(N, G, red, P + tail(Q), r) &&
+		lemma_find_specpath_fromany(N, G, acc, color, pink, UpdateBool(red, r, true), redowner, nthreads, P + tail(Q)); */
+	static pure boolean lemma_LFU_2(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P, seq<int> Q);
+		
+	// Lemma: If `P` is a special path that may or may not contain `r`, then there also exists a special path when we color `r` red.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= a && a < N;
+	requires 0 <= r && r < N;
+	requires 0 <= redowner[r] && redowner[r] < nthreads;
+	requires 1 < |P| && Path(N, G, P);
+	requires SpecialPath(N, G, P, color[tid], pink[tid], red);
+	requires Path(N, G, P[|P|-1], a, Q);
+	requires !red[a] && acc[a] && a != r; // these are the most important restrictions for applying this lemma
+	requires (\forall int s; 0 <= s && s < N && G[r][s]; GetBool(UpdateBool(red, r, true), s) || (pink[redowner[r]][s] && color[redowner[r]][s] != cyan())); // needed to re-establish invariant 2 after the update of `red`
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], UpdateBool(pink[t], r, false), UpdateBool(red, r, true)));
+	ensures \result;
+	/* static pure boolean lemma_findspec_upd_1(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P, seq<int> Q) =
+		(\forall int j; 0 <= j && j < |P|; P[j] != r) ?
+			lemma_LFU_1(N, G, acc, color, pink, red, redowner, nthreads, tid, r, a, P, Q) :
+			lemma_LFU_2(N, G, acc, color, pink, red, redowner, nthreads, tid, r, a, P, Q); */
+	static pure boolean lemma_findspec_upd_1(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P, seq<int> Q);
+
+	// Lemma: If `P` is a special path that may or may not contain `r`, then there also exists a special path when we color `r` red.
+	// (almost the same as `lemma_findspec_upd_1`, only the path from `P[|P|-1]` to `a` is now existentially quantified).
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= a && a < N;
+	requires 0 <= r && r < N;
+	requires 0 <= redowner[r] && redowner[r] < nthreads;
+	requires !red[a] && acc[a] && a != r;
+	requires 1 < |P| && Path(N, G, P);
+	requires SpecialPath(N, G, P, color[tid], pink[tid], red);
+	requires ExPath(N, G, P[|P|-1], a, 1);
+	requires (\forall int s; 0 <= s && s < N && G[r][s]; GetBool(UpdateBool(red, r, true), s) || (pink[redowner[r]][s] && color[redowner[r]][s] != cyan())); // needed to re-establish invariant 2 after the update of `red`
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], UpdateBool(pink[t], r, false), UpdateBool(red, r, true)));
+	ensures \result;
+	/* static pure boolean lemma_findspec_upd_2(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P) =
+		(\forall seq<int> Q; 1 < |Q| && Path(N, G, P[|P|-1], a, Q); 
+			lemma_findspec_upd_1(N, G, acc, color, pink, red, redowner, nthreads, tid, r, a, P, Q)); */
+	static pure boolean lemma_findspec_upd_2(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a, seq<int> P);
+	
+	// Lemma: If there exists a special path that may or may not contain `r`, then there also exists a special path when we color `r` red.
+	// (almost the same as `lemma_findspec_upd_2`, only the path `P` is now existentially quantified).
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= a && a < N;
+	requires 0 <= r && r < N;
+	requires 0 <= redowner[r] && redowner[r] < nthreads;
+	requires !red[a] && acc[a] && a != r;
+	requires ExSpecialPath(N, G, color[tid], pink[tid], red);
+	requires (\forall int v; 0 <= v && v < N && color[tid][v] == cyan(); ExPath(N, G, v, a, 1));
+	requires (\forall int s; 0 <= s && s < N && G[r][s]; GetBool(UpdateBool(red, r, true), s) || (pink[redowner[r]][s] && color[redowner[r]][s] != cyan())); // needed to re-establish invariant 2 after the update of `red`
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]) && ThreadLocalInvariants(N, G, acc, color[t], pink[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (pink[redowner[v]][w] && color[redowner[v]][w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < nthreads; ExSpecialPath(N, G, color[t], UpdateBool(pink[t], r, false), UpdateBool(red, r, true)));
+	ensures \result;
+	/* static pure boolean lemma_findspec_upd_3(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a) =
+		(\forall seq<int> P; 1 < |P| && Path(N, G, P) && SpecialPath(N, G, P, color[tid], pink[tid], red);
+			color[tid][P[|P|-1]] == cyan() && // the last state on `P` is cyan;
+			ExPath(N, G, P[|P|-1], a, 1) && // therefore there exists a path from `last(P)` to `a`
+			lemma_findspec_upd_2(N, G, acc, color, pink, red, redowner, nthreads, tid, r, a, P)
+		); */
+	static pure boolean lemma_findspec_upd_3(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int r, int a);
+	
+	// Lemma: If there exists a special path that may or may not contain `r`, then there also exists a special path when we color `r` red.
+	// (almost the same as `lemma_findspec_upd_3`, however this version applies on a set of workers, instead of color matrices).
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < |threads|);
+	requires (\forall int i; 0 <= i && i < |threads|; threads[i] != null);
+	requires (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].color, 1/2) ** Perm(threads[i].pink, 1/2));
+	requires (\forall int i; 0 <= i && i < |threads|; |threads[i].color| == N && |threads[i].pink| == N);
+	requires 0 <= tid && tid < |threads|;
+	requires 0 <= a && a < N;
+	requires 0 <= r && r < N;
+	requires 0 <= redowner[r] && redowner[r] < |threads|;
+	requires !red[a] && acc[a] && a != r;
+	requires ExSpecialPath(N, G, threads[tid].color, threads[tid].pink, red);
+	requires (\forall int v; 0 <= v && v < N && threads[tid].color[v] == cyan(); ExPath(N, G, v, a, 1));
+	requires (\forall int t; 0 <= t && t < |threads|; ColorTypes(threads[t].color) && ThreadLocalInvariants(N, G, acc, threads[t].color, threads[t].pink, red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (threads[redowner[v]].pink[w] && threads[redowner[v]].color[w] != cyan()))); // invariant 2
+	requires (\forall int s; 0 <= s && s < N && G[r][s]; GetBool(UpdateBool(red, r, true), s) || (threads[redowner[r]].pink[s] && threads[redowner[r]].color[s] != cyan())); // needed to re-establish invariant 2 after the update of `red`
+	ensures (\exists int t; 0 <= t && t < |threads|; ExSpecialPath(N, G, threads[t].color, UpdateBool(threads[t].pink, r, false), UpdateBool(red, r, true)));
+	ensures \result;
+	/* static pure boolean lemma_findspec_upd_thr(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, int tid, int r, int a) =
+		lemma_findspec_upd_3(N, G, acc, ExtractColors(threads), ExtractPink(threads), red, redowner, |threads|, tid, r, a); */
+	static pure boolean lemma_findspec_upd_thr(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, int tid, int r, int a);
+	
+	// Lemma: If there exists an accepting cycle from a non-red state `a`, then a special path can always be found.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < |threads|);
+	requires (\forall int i; 0 <= i && i < |threads|; threads[i] != null);
+	requires (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].color, 1/2) ** Perm(threads[i].pink, 1/2));
+	requires (\forall int i; 0 <= i && i < |threads|; |threads[i].color| == N && |threads[i].pink| == N);
+	requires 0 <= a && a < N;
+	requires !red[a] && acc[a] && ExPath(N, G, a, a, 2);
+	requires (\forall int v; 0 <= v && v < N && G[a][v]; red[v]);
+	requires (\forall int t; 0 <= t && t < |threads|; ColorTypes(threads[t].color) && ThreadLocalInvariants(N, G, acc, threads[t].color, threads[t].pink, red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; (\forall int w; 0 <= w && w < N && G[v][w]; red[w] || (threads[redowner[v]].pink[w] && threads[redowner[v]].color[w] != cyan()))); // invariant 2
+	ensures (\exists int t; 0 <= t && t < |threads|; ExSpecialPath(N, G, threads[t].color, threads[t].pink, red));
+	ensures \result;
+	/* static pure boolean lemma_findspec_cycle_thr(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, int a) =
+		(\forall seq<int> P; 1 < |P| && Path(N, G, a, a, P);
+			P[1] != a && red[P[1]] && lemma_find_specpath_thr(N, G, acc, threads, red, redowner, SkipInt(P, 1))
+		); */
+	static pure boolean lemma_findspec_cycle_thr(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, int a);
+	
+	
+	/* *** Lemmas for proving completeness from the key invariant */
+	
+	// Lemma: If there exists some path from a blue state to an accepting state `a` and none of the states in the graph are either pink or cyan, then `a` must be red.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= root && root < N && color[tid][root] == blue();
+	requires 0 <= a && a < N && acc[a];
+	requires Path(N, G, root, a, P);
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]));
+	requires (\forall int t; 0 <= t && t < nthreads; Invariant1a(N, G, color[t], red));
+	requires (\forall int t; 0 <= t && t < nthreads; Invariant3(N, G, acc, color[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; color[redowner[v]][v] != white());
+	requires (\forall int t; 0 <= t && t < nthreads; (\forall int v; 0 <= v && v < N; !pink[t][v] && color[t][v] != cyan()));
+	ensures red[a];
+	ensures \result;
+	/* static pure boolean lemma_accpath_not_pink_or_cyan_1(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int root, int a, seq<int> P) =
+		1 < |P| ==> lemma_accpath_not_pink_or_cyan_1(N, G, acc, color, pink, red, redowner, nthreads, red[P[1]] ? redowner[P[1]] : tid, P[1], a, SkipInt(P, 1)); */
+	static pure boolean lemma_accpath_not_pink_or_cyan_1(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int root, int a, seq<int> P);
+	
+	// Same as `lemma_accpath_not_pink_or_cyan_1`,  but now the path is existentially quantified.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < nthreads);
+	requires |color| == nthreads && (\forall int t; 0 <= t && t < nthreads; |color[t]| == N);
+	requires |pink| == nthreads && (\forall int t; 0 <= t && t < nthreads; |pink[t]| == N);
+	requires 0 <= tid && tid < nthreads;
+	requires 0 <= root && root < N && color[tid][root] == blue();
+	requires 0 <= a && a < N && acc[a];
+	requires ExPath(N, G, root, a, 1);
+	requires (\forall int t; 0 <= t && t < nthreads; ColorTypes(color[t]));
+	requires (\forall int t; 0 <= t && t < nthreads; Invariant1a(N, G, color[t], red));
+	requires (\forall int t; 0 <= t && t < nthreads; Invariant3(N, G, acc, color[t], red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; color[redowner[v]][v] != white());
+	requires (\forall int t; 0 <= t && t < nthreads; (\forall int v; 0 <= v && v < N; !pink[t][v] && color[t][v] != cyan()));
+	ensures red[a];
+	ensures \result;
+	/* static pure boolean lemma_accpath_not_pink_or_cyan_2(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int root, int a) =
+		(\forall seq<int> P; 0 < |P| && Path(N, G, root, a, P);
+			lemma_accpath_not_pink_or_cyan_1(N, G, acc, color, pink, red, redowner, nthreads, tid, root, a, P)); */
+	static pure boolean lemma_accpath_not_pink_or_cyan_2(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<seq<int>> color, seq<seq<boolean>> pink, seq<boolean> red, seq<int> redowner, int nthreads, int tid, int root, int a);
+	
+	// Same as `lemma_accpath_not_pink_or_cyan_2`, but works on a worker set instead of color matrices.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N && |redowner| == N;
+	requires (\forall int v; 0 <= v && v < N && red[v]; 0 <= redowner[v] && redowner[v] < |threads|);
+	requires (\forall int i; 0 <= i && i < |threads|; threads[i] != null);
+	requires (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].color, 1/2) ** Perm(threads[i].pink, 1/2));
+	requires (\forall int i; 0 <= i && i < |threads|; |threads[i].color| == N && |threads[i].pink| == N);
+	requires 0 <= tid && tid < |threads|;
+	requires 0 <= root && root < N && threads[tid].color[root] == blue();
+	requires 0 <= a && a < N && acc[a];
+	requires ExPath(N, G, root, a, 1);
+	requires (\forall int t; 0 <= t && t < |threads|; ColorTypes(threads[t].color));
+	requires (\forall int t; 0 <= t && t < |threads|; Invariant1a(N, G, threads[t].color, red));
+	requires (\forall int t; 0 <= t && t < |threads|; Invariant3(N, G, acc, threads[t].color, red));
+	requires (\forall int v; 0 <= v && v < N && red[v]; threads[redowner[v]].color[v] != white());
+	requires (\forall int t; 0 <= t && t < |threads|; (\forall int v; 0 <= v && v < N; !threads[t].pink[v] && threads[t].color[v] != cyan()));
+	ensures red[a];
+	ensures \result;
+	/* static pure boolean lemma_accpath_not_pink_or_cyan_3(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, int tid, int root, int a) =
+		lemma_accpath_not_pink_or_cyan_2(N, G, acc, ExtractColors(threads), ExtractPink(threads), red, redowner, |threads|, tid, root, a); */
+	static pure boolean lemma_accpath_not_pink_or_cyan_3(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, seq<int> redowner, int tid, int root, int a);
+	
+	
+	/* ** Nested DFS */
+	
+	/* Covers the starting procedure of the parallel NDFS algorithm */
+	
+	int a;
+	seq<int> P;
+	
+	// The key invariant consists of two cases.
+	// This lemma gives a condition that allows to eliminate the second case, leaving only the first.
+	requires AdjacencyMatrix(N, G) && |acc| == N && |red| == N;
+	requires 0 <= root && root < N;
+	requires (\forall int i; 0 <= i && i < |threads|; threads[i] != null);
+	requires (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].color, 1/2) ** Perm(threads[i].pink, 1/2));
+	requires (\forall int i; 0 <= i && i < |threads|; |threads[i].color| == N && |threads[i].pink| == N);
+	requires KeyInvariant(N, G, acc, threads, red, root);
+	requires (\forall int t; 0 <= t && t < |threads|; !ExSpecialPath(N, G, threads[t].color, threads[t].pink, red));
+	ensures (\forall int v; 0 <= v && v < N && acc[v] && ExAccCycle(N, G, acc, root, v); !red[v]);
+	ensures \result;
+	static pure boolean lemma_elim_case2_from_keyinv(int N, seq<seq<boolean>> G, seq<boolean> acc, seq<Worker> threads, seq<boolean> red, int root) = true;
+	
+	// A resource bundle that contains the thread-local contributions after completion of `dfsblue`. 
+	resource ThreadsLocalContrib(int tid, int N, int root) =
+		Perm(threads, read) **
+		0 <= tid ** tid < |threads| **
+		0 <= root ** root < N **
+		threads[tid] != null **
+		Perm(blueroot, read) ** blueroot == root **
+		Perm(threads[tid].master, read) ** threads[tid].master == this **
+		Perm(threads[tid].tid, read) ** threads[tid].tid == tid **
+		Perm(threads[tid].nthreads, read) ** threads[tid].nthreads == |threads| **
+		Perm(threads[tid].color, 1/2) ** |threads[tid].color| == N **
+		Perm(threads[tid].observedred, 1/2) ** |threads[tid].observedred| == N **
+		Perm(threads[tid].pink, 1/2) ** |threads[tid].pink| == N **
+		Perm(threads[tid].exploringred, 1/2) **
+		Perm(threads[tid].waiting, 1/2) **
+		Perm(threads[tid].term, 1/2) **
+		Perm(threads[tid].redroot, 1/2) **
+		(!threads[tid].term ==> threads[tid].color[root] == blue()) **
+		(!threads[tid].term ==> (\forall int v; 0 <= v && v < N; threads[tid].color[v] != cyan() && !threads[tid].pink[v]));
+	
+	// Allows to unfold the `ThreadsLocalContrib` resource bundles of a set of threads.
+	invariant Perm(threads, read);
+	invariant 0 <= root && root < N;
+	requires (\forall* int t; 0 <= t && t < |threads|; ThreadsLocalContrib(t, N, root));
+	ensures (\forall int t; 0 <= t && t < |threads|; threads[t] != null);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].master, read) ** threads[t].master == this);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].tid, read) ** threads[t].tid == t);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].nthreads, read) ** threads[t].nthreads == |threads|);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].color, 1/2) ** |threads[t].color| == N);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].observedred, 1/2) ** |threads[t].observedred| == N);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].pink, 1/2) ** |threads[t].pink| == N);
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].exploringred, 1/2));
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].waiting, 1/2));
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].term, 1/2));
+	ensures (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].redroot, 1/2));
+	ensures (\forall int t; 0 <= t && t < |threads| && !threads[t].term; threads[t].color[root] == blue());
+	ensures (\forall int t; 0 <= t && t < |threads| && !threads[t].term; (\forall int v; 0 <= v && v < N; threads[t].color[v] != cyan() && !threads[t].pink[v]));
+	void lemma_unfold_ThreadsLocalContrib(int N, int root) {
+		int tid = 0;
+		
+		loop_invariant 0 <= tid && tid <= |threads|;
+		loop_invariant (\forall* int t; tid <= t && t < |threads|; ThreadsLocalContrib(t, N, root));
+		loop_invariant (\forall int t; 0 <= t && t < tid; threads[t] != null);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].master, read) ** threads[t].master == this);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].tid, read) ** threads[t].tid == t);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].nthreads, read) ** threads[t].nthreads == |threads|);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].color, 1/2) ** |threads[t].color| == N);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].observedred, 1/2) ** |threads[t].observedred| == N);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].pink, 1/2) ** |threads[t].pink| == N);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].exploringred, 1/2));
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].waiting, 1/2));
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].term, 1/2));
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].redroot, 1/2));
+		loop_invariant (\forall int t; 0 <= t && t < tid && !threads[t].term; threads[t].color[root] == blue());
+		loop_invariant (\forall int t; 0 <= t && t < tid && !threads[t].term; (\forall int v; 0 <= v && v < N; threads[t].color[v] != cyan() && !threads[t].pink[v]));
+		while (tid < |threads|) {
+			unfold ThreadsLocalContrib(tid, N, root);
+			tid = tid + 1;
+		}
+	}
+	//void lemma_unfold_ThreadsLocalContrib(int N, int root);
+	
+	// The NDFS starting procedure
+	given int nthreads;
+	invariant 0 < nthreads;
+	context Perm(N, read) ** Perm(G, read) ** Perm(A, read);
+	context AdjacencyMatrix(N, G) && |A| == N;
+	context 0 <= root && root < N;
+	context Perm(abort, 1/2);
+	context Perm(a, 1) ** Perm(P, 1);
+	requires Perm(blueroot, read) ** blueroot == root;
+	requires !abort;
+	requires Perm(threads, read) ** nthreads == |threads|;
+	requires (\forall int t; 0 <= t && t < |threads|; threads[t] != null);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].master, read) ** threads[t].master == this);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].tid, read) ** threads[t].tid == t);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].nthreads, read) ** threads[t].nthreads == |threads|);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].color, 1/2) ** |threads[t].color| == N);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].observedred, 1/2) ** |threads[t].observedred| == N);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].pink, 1/2) ** |threads[t].pink| == N);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].exploringred, 1/2) ** !threads[t].exploringred);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].waiting, 1/2) ** !threads[t].waiting);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].term, 1/2) ** !threads[t].term);
+	requires (\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].redroot, 1/2));
+	requires (\forall int t; 0 <= t && t < |threads|; (\forall int v; 0 <= v && v < N; threads[t].color[v] == white() && !threads[t].pink[v] && !threads[t].observedred[v]));
+	/* soundness */
+	ensures \result ==> (\exists int v; 0 <= v && v < N && A[v]; ExAccCycle(N, G, A, root, v));
+	/* completeness */
+	ensures (\exists int v; 0 <= v && v < N && A[v]; ExAccCycle(N, G, A, root, v)) ==> \result;
+	boolean ndfs(int root) {
+		invariant inv(
+			Perm(this.abort, 1/2) ** Perm(this.a, 1) ** Perm(this.P, 1) **
+			(this.abort ==> (0 <= this.a && this.a < N && A[this.a])) **
+			(this.abort ==> (Path(N, G, root, this.a, this.P) && ExPath(N, G, this.a, this.a, 2)))
+		)
+		{ //;
+			assert Perm(N, read) ** Perm(G, read) ** Perm(A, read);
+			
+			par (int tid = 0 .. nthreads)
+				context Perm(N, read) ** Perm(G, read) ** Perm(A, read);
+				context AdjacencyMatrix(N, G) && |A| == N;
+				context 0 <= root && root < N;
+				context Perm(threads, read) ** nthreads == |threads|;
+				context threads[tid] != null;
+				requires Perm(blueroot, read) ** blueroot == root;
+				requires Perm(threads[tid].master, read) ** threads[tid].master == this;
+				requires Perm(threads[tid].tid, read) ** threads[tid].tid == tid;
+				requires Perm(threads[tid].nthreads, read) ** threads[tid].nthreads == |threads|;
+				requires Perm(threads[tid].color, 1/2) ** |threads[tid].color| == N;
+				requires Perm(threads[tid].observedred, 1/2)  ** |threads[tid].observedred| == N;
+				requires Perm(threads[tid].pink, 1/2)  ** |threads[tid].pink| == N;
+				requires Perm(threads[tid].exploringred, 1/2);
+				requires Perm(threads[tid].waiting, 1/2);
+				requires Perm(threads[tid].term, 1/2);
+				requires Perm(threads[tid].redroot, 1/2);
+				requires (\forall int v; 0 <= v && v < N;
+					threads[tid].color[v] == white() &&
+					!threads[tid].pink[v] &&
+					!threads[tid].observedred[v]
+				);
+				requires !threads[tid].term;
+				requires !threads[tid].waiting;
+				requires !threads[tid].exploringred;
+				ensures ThreadsLocalContrib(tid, N, root);
+			{
+				int a;
+				seq<int> P;
+				int found = threads[tid].dfsblue(N, G, A, root, root) with { a = a; P = P; };
+
+				if (found == found()) {
+					lock this;
+					if (!abort) {
+						atomic(inv) {
+							this.abort = true;
+							this.a = a;
+							this.P = P;
+						}
+					}
+					threads[tid].term = true;
+					unlock this;
+				}
+				
+				// VerCors seems to have difficulties with ensuring all requires postconditions directly, in the contract of the parallel block.
+				// Instead of doing that, we make it a bit easier for VerCors by packing all the postconditions in a single `ThreadsLocalContrib` predicate.
+				// This predicate will be unfold again after the parallel block. But of course, this requires some auxiliary definitions/lemmas.
+				fold ThreadsLocalContrib(tid, N, root);
+			}
+			
+			assert Perm(N, read) ** Perm(G, read) ** Perm(A, read);
+			assert AdjacencyMatrix(N, G) && |A| == N;
+			assert 0 <= root && root < N;
+			assert Perm(threads, read) ** nthreads == |threads|;
+		}
+		
+		assert (\forall* int t; 0 <= t && t < |threads|; ThreadsLocalContrib(t, N, root));
+		lemma_unfold_ThreadsLocalContrib(N, root);
+
+		if (abort) {
+			assert (0 <= a && a < N && A[a]);
+			assert (Path(N, G, root, a, P) && ExPath(N, G, a, a, 2));
+			assert ExAccCycle(N, G, A, root, a);
+			assert (\exists int v; 0 <= v && v < N && A[v]; ExAccCycle(N, G, A, root, v)); // property of interest (in case `abort` is true)
+		}
+		
+		// derive information from the lock invariant
+		if (!abort) {
+			lock this; 
+			assert (\forall int t; 0 <= t && t < |threads|; !threads[t].term);
+			assert (\forall int t; 0 <= t && t < |threads|; !ExSpecialPath(N, G, threads[t].color, threads[t].pink, red));
+			lemma_elim_case2_from_keyinv(N, G, A, threads, red, root);
+			assert (\forall int v; 0 <= v && v < N && A[v] && ExAccCycle(N, G, A, root, v); !red[v]);
+			assert threads[0].color[root] == blue();
+			assert (\forall int v; 0 <= v && v < N && A[v] && ExAccCycle(N, G, A, root, v); lemma_accpath_not_pink_or_cyan_3(N, G, A, threads, red, redowner, 0, root, v) && red[v]);
+			assert (\forall int v; 0 <= v && v < N && A[v]; !ExAccCycle(N, G, A, root, v)); // property of interest (in case `abort` is false)
+			unlock this; 
+		}
+
+		assert (\exists int v; 0 <= v && v < N && A[v]; ExAccCycle(N, G, A, root, v)) ==> abort;
+		return abort;
+	}
+	//boolean ndfs(int root);
+}

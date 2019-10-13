@@ -1,0 +1,3 @@
+void setVal(int[M][N] matrix, int i, int j, int val) {
+  matrix[i][j] = val;
+}

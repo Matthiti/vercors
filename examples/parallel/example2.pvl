@@ -1,0 +1,56 @@
+class Example2
+{
+  invariant a != null;
+  invariant b != null;
+  invariant c != null;
+
+  requires (\forall* int i; 0 <= i &&  i < a.length; Perm(a[i], 1));
+  requires (\forall* int i; 0 <= i &&  i < b.length; Perm(b[i], 1));
+  requires (\forall* int i; 0 <= i &&  i < c.length; Perm(c[i], 1/2));
+  requires a.length == b.length;
+  requires b.length == c.length;
+
+  ensures (\forall* int i; 0 <= i &&  i < a.length; Perm(a[i], 1));
+  ensures (\forall* int i; 0 <= i &&  i < b.length ; Perm(b[i], 1));
+  ensures (\forall* int i; 0 <= i &&  i < c.length ; Perm(c[i], 1/2));
+  ensures (\forall int i; 0 < i && i < a.length; a[i] == c[i - 1] * 2);
+
+  void m(int[] a, int[] b, int[] c)
+  {
+    par thread (int i = 0 .. a.length)
+    requires Perm(a[i], 1) ** Perm(b[i], 1) ** Perm(c[i], 1/2);
+    ensures Perm(a[i], 1);
+    ensures Perm(b[i], 1/2);
+    ensures Perm(c[i], 1/2);
+
+    ensures i > 0 ==> Perm(b[i - 1], 1/2);
+    ensures i == a.length - 1 ==> Perm(b[i], 1);
+    ensures b[i] == c[i] * 2;
+    ensures i > 0 ==> a[i] == b[i-1];
+    //for (int i = 0; i < a.length; i++)
+    {
+      b[i] = c[i] * 2;
+
+      barrier(thread)
+      {
+        requires Perm(a[i], 1);
+        requires Perm(b[i], 1);
+        requires Perm(c[i], 1/2);
+        requires b[i] == c[i] * 2;
+
+        ensures Perm(a[i], 1);
+        ensures Perm(b[i], 1/2);
+        ensures Perm(c[i], 1/2);
+        ensures i > 0 ==> Perm(b[i - 1], 1/2);
+        ensures i == a.length - 1 ==> Perm(b[i], 1);
+        ensures b[i] == c[i] * 2;
+      }
+
+      if (i > 0)
+      {
+        a[i] = b[i-1];
+      }
+    }
+  }
+
+}

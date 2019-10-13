@@ -1,0 +1,65 @@
+kernel binomial {
+
+  global int[gsize] ar;
+  local  int[gsize] tmp;
+
+  requires gsize > 1;
+  requires perm(ar[tid],100);
+  requires perm(tmp[tid],100);
+  ensures  gsize > 1;
+  ensures  perm(ar[tid],100);
+  ensures  ar[tid]=bin(gsize-1,tid);
+  void main(){
+    int N;
+    int temp;
+    N:=1;
+    ar[tid]:=1;
+    invariant gsize > 1;
+    invariant 0 < N * N < gsize;
+    invariant perm(ar[tid],100);
+    invariant perm(tmp[tid],100);
+    invariant tid<N -> ar[tid]=bin(N,tid);
+    invariant tid>=N -> ar[tid]=1;
+    while(N<gsize-1){
+      tmp[tid]:=ar[tid];
+      barrier(local){
+        requires gsize > 1;
+        requires 0 < N * N < gsize;
+        requires tid<N -> ar[tid]=bin(N,tid);
+        requires tid>=N -> ar[tid]=1;
+        requires tmp[tid]=ar[tid];
+        ensures gsize > 1;
+        ensures 0 < N * N < gsize;
+        ensures perm(ar[tid],100);
+        ensures perm(tmp[(tid-1) mod gsize],10);
+        ensures 0 < tid & tid <= N -> tmp[(tid-1) mod gsize]=bin(N,tid-1);
+        ensures tid<N -> ar[tid]=bin(N,tid);
+        ensures tid>=N -> ar[tid]=1;
+      }
+      N := N+1;
+      if(0<tid & tid<N){
+        temp:=tmp[(tid-1) mod gsize];
+        assert temp=bin(N-1,tid-1);
+        assert ar[tid]=bin(N-1,tid);
+        ar[tid]:=temp+ar[tid];
+        assert ar[tid]=bin(N,tid);
+      }
+      barrier(){
+        requires gsize > 1;
+        requires 0 < N * N < gsize;
+        requires tid<N -> ar[tid]=bin(N,tid);
+        requires tid>=N -> ar[tid]=1;
+        ensures gsize > 1;
+        ensures 0 < N * N < gsize;
+        ensures perm(ar[tid],100);
+        ensures perm(tmp[tid],100);
+        ensures tid<N -> ar[tid]=bin(N,tid);
+        ensures tid>=N -> ar[tid]=1;
+      }
+    }
+  }
+
+  requires N>=0 * 0 <= k * k <= N ;
+  int bin(int N,int k)=(k=0|k=N|N<=0)?1:(bin(N-1,k-1)+bin(N-1,k));
+}
+

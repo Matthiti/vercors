@@ -1,0 +1,23 @@
+// -*- tab-width:2 ; indent-tabs-mode:nil -*-
+/*
+ * This example verifies a toy example of a kernel barrier.
+ *
+ * To verify this example, use:
+ *
+ *   vct --chalice --single-group addition.pvl
+ */
+kernel addition {
+global int[gsize] x, y;
+requires perm(x[tid],100) * perm(y[tid],100);
+ensures  perm(x[tid],100) * (0<tid & tid<gsize -> x[tid]=f(tid)+f(tid-1));
+void main(){
+  y[tid] := f(tid);
+  barrier(global){
+    requires y[tid]=f(tid);
+    ensures perm(x[tid],100) * perm(y[tid],50) * perm(y[(tid-1) mod gsize],50);
+    ensures y[tid]=f(tid) * (tid>0 -> y[tid-1]=f(tid-1)); }
+  if (tid>0) { x[tid] := y[tid]+y[tid-1]; } }
+int f(int x)=x;
+}
+
+

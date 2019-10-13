@@ -1,0 +1,634 @@
+/* * Naive Parallel Nested DFS (swarming) */
+
+class Worker {
+	
+	/** ** Thread-local state */
+	
+	Master master;
+	int tid; // thread identifier
+	int nthreads; // total number of threads (in `master`)
+	seq<int> C1; // color set of `dfsblue`
+	seq<int> C2; // color set of `dfsred`
+	boolean term; // thread-local termination flag
+	
+	static inline resource MasterState(Worker me, int N, seq<seq<boolean>> G, seq<boolean> A) =
+		me != null **
+		Perm(me.master, 1/2) ** me.master != null **
+		Perm(me.nthreads, 1/2) ** 0 < me.nthreads **
+		Perm(me.tid, 1/2) ** 0 <= me.tid ** me.tid < me.nthreads **
+		Perm(me.term, 1/2) **
+		Perm(me.master.N, 1/(4*me.nthreads)) ** N == me.master.N **
+		Perm(me.master.G, 1/(4*me.nthreads)) ** G == me.master.G **
+		Perm(me.master.A, 1/(4*me.nthreads)) ** A == me.master.A **
+		Perm(me.master.threads, 1/(4*me.nthreads)) **
+		|me.master.threads| == me.nthreads **
+		me.master.threads[me.tid] == me;
+
+
+	/* ** DFS red */
+	
+	given int root;
+	yields int c; // explicit witness
+	yields seq<int> P; // explicit witness
+	context MasterState(this, N, G, A) ** Perm(C1, 1/2) ** Perm(C2, 1);
+	context Master.AdjacencyMatrix(N, G) && |A| == N && |C1| == N && |C2| == N;
+	context Master.ColorTypes(C1, C2);
+	context 0 <= root && root < N;
+	context 0 <= s && s < N;
+	requires C2[s] == Master.white();
+	requires (\forall int v; 0 <= v && v < N && G[root][v]; C1[v] == Master.blue() || C1[v] == Master.cyan()); // `Next({root}, Blue ∪ Cyan)`
+	requires (\forall int v; 0 <= v && v < N && C1[v] == Master.blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == Master.blue() || C1[w] == Master.cyan())); // `Next(Blue, Blue ∪ Cyan)`
+	requires s == root || C1[s] == Master.blue();
+	requires (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); (\forall int w; 0 <= w && w < N && G[v][w]; (C2[w] == Master.red() || C2[w] == Master.pink()) && C1[w] != Master.cyan())); // `Next(Red, Red ∪ Pink)` and `Next(Red, G − Cyan)`
+	requires (\forall int v; 0 <= v && v < N && C2[v] == Master.red() && v != root; C1[v] == Master.blue()); // `Red ⊆ Blue ∪ {root}`
+	ensures C1 == \old(C1);
+	ensures (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); (\forall int w; 0 <= w && w < N && G[v][w]; (C2[w] == Master.red() || C2[w] == Master.pink()) && C1[w] != Master.cyan())); // `Next(Red, Red ∪ Pink)` and `Next(Red, G − Cyan)`
+	ensures (\forall int v; 0 <= v && v < N && \old(C2[v]) == Master.red(); C2[v] == Master.red()); // `old(Red) ⊆ Red`
+	ensures (\forall int v; 0 <= v && v < N && C2[v] == Master.red() && v != root; C1[v] == Master.blue()); // `Red ⊆ Blue ∪ {root}`
+	ensures \result == Master.found() || \result == Master.notfound() || \result == Master.aborted();
+	ensures \result == Master.notfound() ==> C2[s] == Master.red();
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && C2[v] == Master.pink(); \old(C2[v]) == Master.pink());
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && \old(C2[v]) == Master.pink(); C2[v] == Master.pink());
+	ensures \result == Master.found() ==> (0 <= c && c < N && C1[c] == Master.cyan());
+	ensures \result == Master.found() ==> (1 < |P| && Master.Path(N, G, s, c, P));
+	ensures \result == Master.aborted() ==> unfolding MasterState(this, N, G, A) in term;
+	int dfsred(int N, seq<seq<boolean>> G, seq<boolean> A, int s) {
+		C2 = Master.UpdateInt(C2, s, Master.pink());
+		
+		int found = Master.notfound();
+		int t = 0;
+
+		loop_invariant MasterState(this, N, G, A) ** Perm(C1, 1/2) ** Perm(C2, 1);
+		loop_invariant Master.AdjacencyMatrix(N, G) && |A| == N && |C1| == N && |C2| == N;
+		loop_invariant Master.ColorTypes(C1, C2);
+		loop_invariant 0 <= root && root < N;
+		loop_invariant 0 <= s && s < N;
+		loop_invariant 0 <= t && t <= N;
+		loop_invariant C1 == \old(C1);
+		loop_invariant (\forall int v; 0 <= v && v < N && G[root][v]; C1[v] == Master.blue() || C1[v] == Master.cyan()); // `Next({root}, Blue ∪ Cyan)`
+		loop_invariant (\forall int v; 0 <= v && v < N && C1[v] == Master.blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == Master.blue() || C1[w] == Master.cyan())); // `Next({root}, Blue ∪ Cyan)`
+		loop_invariant s == root || C1[s] == Master.blue();
+		loop_invariant (\forall int v; 0 <= v && v < N && \old(C2[v]) == Master.red(); C2[v] == Master.red()); // `old(Red) ⊆ Red`
+		loop_invariant (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); (\forall int w; 0 <= w && w < N && G[v][w]; (C2[w] == Master.red() || C2[w] == Master.pink()) && C1[w] != Master.cyan())); // `Next(Red, Red ∪ Pink)` and `Next(Red, G − Cyan)` 
+		loop_invariant (\forall int v; 0 <= v && v < N && C2[v] == Master.red() && v != root; C1[v] == Master.blue()); // `Red ⊆ Blue ∪ {root}`
+		loop_invariant found == Master.found() || found == Master.notfound() || found == Master.aborted();
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && v != s && C2[v] == Master.pink(); \old(C2[v]) == Master.pink());
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && v != s && \old(C2[v]) == Master.pink(); C2[v] == Master.pink());
+		loop_invariant found == Master.notfound() ==> C2[s] == Master.pink();
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < t && G[s][v]; (C2[v] == Master.pink() || C2[v] == Master.red()) && C1[v] != Master.cyan());
+		loop_invariant found == Master.found() ==> (0 <= c && c < N && C1[c] == Master.cyan());
+		loop_invariant found == Master.found() ==> (1 < |P| && Master.Path(N, G, s, c, P));
+		loop_invariant found == Master.aborted() ==> unfolding MasterState(this, N, G, A) in term;
+		while (t < N && found == Master.notfound()) {
+			// check for global termination
+			unfold MasterState(this, N, G, A);
+			lock master;
+			if (master.abort) {
+				term = true;
+				found = Master.aborted();
+			}
+			unlock master;
+			fold MasterState(this, N, G, A);
+			
+			if (G[s][t] && found != Master.aborted()) {
+				if (C1[t] == Master.cyan()) {
+					c = t;
+					P = seq<int> { s, t };
+					found = Master.found();
+				}
+				else {
+					if (C2[t] == Master.white()) {
+						found = dfsred(N, G, A, t) with { root = root; c = c; P = P; };
+						if (found == Master.found()) {
+							P = seq<int> { s } + P; 
+						}
+					}
+				}
+			}
+			t = t + 1;
+		}
+		
+		if (found == Master.notfound()) {
+			C2 = Master.UpdateInt(C2, s, Master.red());
+		}
+		
+		return found;
+	}
+	
+	
+	/* ** DFS blue */
+	
+	yields int a; // explicit witness
+	yields seq<int> P; // explicit witness
+	context MasterState(this, N, G, A) ** Perm(C1, 1) ** Perm(C2, 1);
+	context Master.AdjacencyMatrix(N, G) && |A| == N && |C1| == N && |C2| == N;
+	context Master.ColorTypes(C1, C2);
+	requires 0 <= s && s < N && C1[s] == Master.white();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == Master.blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == Master.blue() || C1[w] == Master.cyan())); // `Next(Blue, Blue ∪ Cyan)`
+	requires (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); (\forall int w; 0 <= w && w < N && G[v][w]; C2[w] == Master.red() || C2[w] == Master.pink())); // `Next(Red, Red ∪ Pink)`
+	requires (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); C1[v] == Master.blue()); // `Red ⊆ Blue`
+	requires (\forall int v; 0 <= v && v < N; C2[v] != Master.pink()); // `Pink = Ø`
+	requires (\forall int v; 0 <= v && v < N && C1[v] == Master.cyan(); Master.ExPath(N, G, v, s, 1));
+	requires Master.KeyInvariant(N, G, A, C1);
+	ensures (\forall int v; 0 <= v && v < N && C1[v] == Master.blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == Master.blue() || C1[w] == Master.cyan())); // `Next(Blue, Blue ∪ Cyan)`
+	ensures (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); (\forall int w; 0 <= w && w < N && G[v][w]; C2[w] == Master.red() || C2[w] == Master.pink())); // `Next(Red, Red ∪ Pink)`
+	ensures (\forall int v; 0 <= v && v < N && \old(C1[v]) == Master.blue(); C1[v] == Master.blue()); // `old(Blue) ⊆ Blue`
+	ensures Master.KeyInvariant(N, G, A, C1);
+	ensures \result == Master.found() || \result == Master.notfound() || \result == Master.aborted();
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && C1[v] == Master.cyan(); Master.ExPath(N, G, v, s, 1));
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); C1[v] == Master.blue()); // `¬found ⇒ Red ⊆ Blue`
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N; C2[v] != Master.pink()); // `¬found ⇒ Pink = Ø`
+	ensures \result == Master.notfound() ==> C1[s] == Master.blue();
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && C1[v] == Master.cyan(); \old(C1[v]) == Master.cyan());
+	ensures \result == Master.notfound() ==> (\forall int v; 0 <= v && v < N && \old(C1[v]) == Master.cyan(); C1[v] == Master.cyan());
+	ensures \result == Master.found() ==> (0 <= a && a < N && A[a]);
+	ensures \result == Master.found() ==> (Master.Path(N, G, s, a, P) && Master.ExPath(N, G, a, a, 2));
+	ensures \result == Master.aborted() ==> unfolding MasterState(this, N, G, A) in term;
+	int dfsblue(int N, seq<seq<boolean>> G, seq<boolean> A, int s) {
+		C1 = Master.UpdateInt(C1, s, Master.cyan());
+		Master.lemma_expath_m(N, G, s, s, seq<int> { s });
+		
+		int found = Master.notfound();
+		int t = 0;
+		
+		loop_invariant MasterState(this, N, G, A) ** Perm(C1, 1) ** Perm(C2, 1);
+		loop_invariant Master.AdjacencyMatrix(N, G);
+		loop_invariant |A| == N && |C1| == N && |C2| == N;
+		loop_invariant Master.ColorTypes(C1, C2);
+		loop_invariant 0 <= s && s < N;
+		loop_invariant 0 <= t && t <= N;
+		loop_invariant (\forall int v; 0 <= v && v < N && C1[v] == Master.blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == Master.blue() || C1[w] == Master.cyan())); // `Next(Blue, Blue ∪ Cyan)`
+		loop_invariant (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); (\forall int w; 0 <= w && w < N && G[v][w]; C2[w] == Master.red() || C2[w] == Master.pink())); // `Next(Red, Red ∪ Pink)`
+		loop_invariant (\forall int v; 0 <= v && v < N && \old(C1[v]) == Master.blue(); C1[v] == Master.blue()); // `old(Blue) ⊆ Blue`
+		loop_invariant Master.KeyInvariant(N, G, A, C1);
+		loop_invariant found == Master.found() || found == Master.notfound() || found == Master.aborted();
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && C1[v] == Master.cyan(); Master.ExPath(N, G, v, s, 1));
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && C2[v] == Master.red(); C1[v] == Master.blue()); // `¬found ⇒ Red ⊆ Blue`
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N; C2[v] != Master.pink()); // `¬found ⇒ Pink = Ø`
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && v != s && C1[v] == Master.cyan(); \old(C1[v]) == Master.cyan());
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < N && v != s && \old(C1[v]) == Master.cyan(); C1[v] == Master.cyan());
+		loop_invariant found == Master.notfound() ==> C1[s] == Master.cyan(); // `¬found ⇒ s ∈ Cyan`
+		loop_invariant found == Master.notfound() ==> (\forall int v; 0 <= v && v < t && G[s][v]; C1[v] == Master.cyan() || C1[v] == Master.blue());
+		loop_invariant found == Master.found() ==> (0 <= a && a < N && A[a]);
+		loop_invariant found == Master.found() ==> (Master.Path(N, G, s, a, P) && Master.ExPath(N, G, a, a, 2));
+		loop_invariant found == Master.aborted() ==> unfolding MasterState(this, N, G, A) in term;
+		while (t < N && found == Master.notfound()) {
+			// check for global termination
+			unfold MasterState(this, N, G, A);
+			lock master;
+			if (master.abort) {
+				term = true;
+				found = Master.aborted();
+			}
+			unlock master;
+			fold MasterState(this, N, G, A);
+			
+			if (G[s][t] && found != Master.aborted()) {
+				if (C1[t] == Master.white()) {
+					Master.lemma_nextcyan_m(N, G, C1, s, t);
+					found = dfsblue(N, G, A, t) with { a = a; P = P; };
+					if (found == Master.found()) {
+						P = seq<int> { s } + P;
+					}
+				}
+			}
+			t = t + 1;
+		}
+		
+		if (found == Master.notfound() && A[s]) {
+			int c;
+			seq<int> Q;
+			found = dfsred(N, G, A, s) with { root = s; c = c; P = Q; };
+			if (found == Master.found()) {
+				Master.lemma_cyclefoundhere_m(N, G, C1, s, c, Q);
+				a = s;
+				P = seq<int> { s };
+			}
+			else {
+				if (found == Master.notfound()) {
+					assert (\forall seq<int> P;
+						(\forall int i; 0 <= i && i < |P|; 0 <= P[i] && P[i] < N);
+							Master.lemma_nopath(N, G, C1, C2, s, s, P));
+					assert !Master.ExPath(N, G, s, s, 2);
+				}
+			}
+		}
+		
+		if (found == Master.notfound()) {
+			C1 = Master.UpdateInt(C1, s, Master.blue());
+		}
+
+		return found;
+	}
+}
+
+class Master {
+	
+	/** ** Global state */
+	
+	int N; // total number of states
+	seq<seq<boolean>> G; // adjacency matrix representation of the input graph
+	seq<boolean> A; // the (finite) set of accepting states
+	boolean abort; // global termination flag
+	seq<Worker> threads; // worker set
+	int result; // result of NDFS
+	int a; // explicit witness; accepting state
+	seq<int> P; // explicit witness: accepting cycle (that includes `a`)
+	
+	resource lock_invariant() =
+		Perm(abort, 1/2) **
+		Perm(threads, 1/2) **
+		(\forall int t; 0 <= t && t < |threads|; threads[t] != null) **
+		(\forall* int t; 0 <= t && t < |threads|; Perm(threads[t].term, 1/2)) **
+		(\forall int t; 0 <= t && t < |threads|; threads[t].term ==> abort);
+		
+	requires 0 < nthreads;
+	requires AdjacencyMatrix(N_, G_) && |A_| == N_;
+	ensures Perm(abort, 1/2) ** !abort;
+	ensures Perm(N, 1) ** N == N_;
+	ensures Perm(G, 1) ** G == G_;
+	ensures Perm(A, 1) ** A == A_;
+	ensures AdjacencyMatrix(N, G) && |A| == N;
+	ensures Perm(threads, 1/2) ** |threads| == nthreads;
+	ensures (\forall* int t; 0 <= t && t < nthreads; Perm(threads[t].master, 1) ** threads[t].master == this);
+	ensures (\forall* int t; 0 <= t && t < nthreads; Perm(threads[t].tid, 1) ** threads[t].tid == t);
+	ensures (\forall* int t; 0 <= t && t < nthreads; Perm(threads[t].nthreads, 1) ** threads[t].nthreads == nthreads);
+	ensures (\forall* int t; 0 <= t && t < nthreads; Perm(threads[t].C1, 1) ** threads[t].C1 == NewColorSet(N));
+	ensures (\forall* int t; 0 <= t && t < nthreads; Perm(threads[t].C2, 1) ** threads[t].C2 == NewColorSet(N));
+	ensures (\forall* int t; 0 <= t && t < nthreads; Perm(threads[t].term, 1/2) ** !threads[t].term);
+	Master(int N_, seq<seq<boolean>> G_, seq<boolean> A_, int nthreads) {
+		N = N_;
+		G = G_;
+		A = A_;
+		
+		threads = seq<Worker> { };
+		int tid = 0;
+		
+		// construct the worker set
+		loop_invariant 0 <= tid && tid <= nthreads;
+		loop_invariant Perm(N, 1) ** N == N_;
+		loop_invariant Perm(G, 1) ** G == G_;
+		loop_invariant Perm(A, 1) ** A == A_;
+		loop_invariant AdjacencyMatrix(N, G) && |A| == N;
+		loop_invariant Perm(threads, 1) ** |threads| == tid;
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].master, 1) ** threads[t].master == this);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].tid, 1) ** threads[t].tid == t);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].nthreads, 1) ** threads[t].nthreads == nthreads);
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].C1, 1) ** threads[t].C1 == NewColorSet(N));
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].C2, 1) ** threads[t].C2 == NewColorSet(N));
+		loop_invariant (\forall* int t; 0 <= t && t < tid; Perm(threads[t].term, 1) ** !threads[t].term);
+		while (tid < nthreads) {
+			Worker thread = new Worker();
+			thread.master = this;
+			thread.tid = tid;
+			thread.nthreads = nthreads;
+			thread.C1 = NewColorSet(N);
+			thread.C2 = NewColorSet(N);
+			thread.term = false;
+			threads = threads + seq<Worker> { thread };
+			tid = tid + 1;
+		}
+		
+		abort = false;
+	}
+	
+
+	/** ** NDFS Color codes */
+	
+	static inline pure int white() = 0;
+	static inline pure int cyan() = 1;
+	static inline pure int blue() = 2;
+	static inline pure int pink() = 3;
+	static inline pure int red() = 4;
+	
+	
+	/* ** NDFS return types */
+	
+	/* The PNDFS algorithm may terminate in three different ways, indicated by the following three
+		 return options. The `aborted()` option indicates global terminates, since another worker has found a solution. */
+	
+	static inline pure int notfound() = 0;
+	static inline pure int found() = 1;
+	static inline pure int aborted() = 2;
+	
+	
+	/** ** Default predicates */
+	
+	// determines whether `G` is an adjacency matrix of size `N`
+	static inline pure boolean AdjacencyMatrix(int N, seq<seq<boolean>> G) =
+		|G| == N && (\forall seq<boolean> e; e in G; |e| == N);
+		
+	// determines whether the color sets `C1` and `C2` have the proper colors
+	static inline pure boolean ColorTypes(seq<int> C1, seq<int> C2) =
+		(\forall int j; 0 <= j && j < |C1|; C1[j] == white() || C1[j] == cyan() || C1[j] == blue()) &&
+		(\forall int j; 0 <= j && j < |C2|; C2[j] == white() || C2[j] == pink() || C2[j] == red());
+	
+	// determines whether `P` is a path from `x` to `y` in the graph `G`.
+	requires AdjacencyMatrix(N, G);
+	static pure boolean Path(int N, seq<seq<boolean>> G, int x, int y, seq<int> P) =
+		0 <= x && x < N && 0 <= y && y < N &&
+		0 < |P| && P[0] == x && P[|P| - 1] == y &&
+		(\forall int j; 0 <= j && j < |P|; 0 <= P[j] && P[j] < N) &&
+		(\forall int j; 0 <= j && j < |P| - 1; G[P[j]][P[j + 1]]);
+	
+	// existential quantification over paths in `G` of length at least `len`.
+	requires AdjacencyMatrix(N, G);
+	static pure boolean ExPath(int N, seq<seq<boolean>> G, int x, int y, int len) =
+		(\exists seq<int> P; len <= |P|; Path(N, G, x, y, P));
+		
+	// determines the existance of an accepting cycle starting from `root`
+	requires AdjacencyMatrix(N, G) && |A| == N;
+	requires 0 <= root && root < N;
+	static pure boolean ExAccCycle(int N, seq<seq<boolean>> G, seq<boolean> A, int root) =
+		(\exists int v; 0 <= v && v < N && A[v] && ExPath(N, G, root, v, 1); ExPath(N, G, v, v, 2));
+	
+	// the invariant maintained by NDFS to determine completeness
+	static inline pure boolean KeyInvariant(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> C1) =
+		(\forall int v; 0 <= v && v < N && C1[v] == blue() && A[v]; !ExPath(N, G, v, v, 2));
+	
+	
+	/* ** Default operations */
+
+	requires 0 <= i && i < |xs|;
+	ensures |\result| == |xs|;
+	ensures \result[i] == v;
+	ensures (\forall int j; 0 <= j && j < |xs| && j != i; \result[j] == xs[j]);
+	pure static seq<int> UpdateInt(seq<int> xs, int i, int v) =
+		0 < i ? seq<int> { head(xs) } + UpdateInt(tail(xs), i - 1, v) : seq<int> { v } + tail(xs);
+
+	requires 0 <= i && i < |xs|;
+	ensures |\result| == |xs|;
+	ensures \result[i] == v;
+	ensures (\forall int j; 0 <= j && j < |xs| && j != i; \result[j] == xs[j]);
+	pure static seq<boolean> UpdateBool(seq<boolean> xs, int i, boolean v) =
+		0 < i ? seq<boolean> { head(xs) } + UpdateBool(tail(xs), i - 1, v) : seq<boolean> { v } + tail(xs);
+	
+	// constructs a fresh color set containing `n` white colors.
+	requires 0 <= n;
+	ensures |\result| == n;
+	ensures (\forall int i; 0 <= i && i < n; \result[i] == white());
+	pure static seq<int> NewColorSet(int n) =
+		0 < n ? seq<int> { white() } + NewColorSet(n - 1) : seq<int> { };
+		
+		
+	/* ** Standard properties of paths */
+
+	requires AdjacencyMatrix(N, G) && Path(N, G, x, y, P);
+	ensures \result && ExPath(N, G, x, y, |P|);
+	pure static boolean lemma_expath(int N, seq<seq<boolean>> G, int x, int y, seq<int> P) = true;
+
+	requires AdjacencyMatrix(N, G) && Path(N, G, x, y, P);
+	ensures ExPath(N, G, x, y, |P|);
+	static void lemma_expath_m(int N, seq<seq<boolean>> G, int x, int y, seq<int> P) {
+		assert lemma_expath(N, G, x, y, P);
+	}
+
+	requires AdjacencyMatrix(N, G);
+	requires Path(N, G, s, t, P);
+	requires Path(N, G, t, u, Q);
+	ensures \result && Path(N, G, s, u, P + tail(Q));
+	pure static boolean lemma_path_trans(int N, seq<seq<boolean>> G, int s, int t, int u, seq<int> P, seq<int> Q) = true;
+
+	requires AdjacencyMatrix(N, G);
+	requires ExPath(N, G, s, t, len1);
+	requires ExPath(N, G, t, u, len2);
+	ensures \result && ExPath(N, G, s, u, len1 + len2 - 1);
+	pure static boolean lemma_expath_trans(int N, seq<seq<boolean>> G, int s, int t, int u, int len1, int len2) =
+		(\forall seq<int> P; Path(N, G, s, t, P);
+			(\forall seq<int> Q; Path(N, G, t, u, Q);
+				lemma_path_trans(N, G, s, t, u, P, Q)));
+
+	requires AdjacencyMatrix(N, G);
+	requires 0 <= s && s < N;
+	requires 0 <= t && t < N;
+	requires G[s][t];
+	ensures \result && ExPath(N, G, s, t, 1);
+	pure static boolean lemma_edge_path(int N, seq<seq<boolean>> G, int s, int t) =
+		Path(N, G, s, t, seq<int> { s, t });
+
+
+	/* ** Auxiliary lemmas */
+
+	requires AdjacencyMatrix(N, G) && |C1| == N && |C2| == N;
+	requires (\forall int i; 0 <= i && i < |P|; 0 <= P[i] && P[i] < N);
+	requires (\forall int v; 0 <= v && v < N && C2[v] == red(); (\forall int w; 0 <= w && w < N && G[v][w]; C2[w] == red())); // `Next(Red, Red)`
+	requires (\forall int v; 0 <= v && v < N && C2[v] == red(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] != cyan())); // `Next(Red, G - Cyan)`
+	requires 0 <= x && x < N && C2[x] == red();
+	requires 0 <= y && y < N && C1[y] == cyan();
+	ensures 1 < |P| ==> !Path(N, G, x, y, P);
+	ensures \result;
+	pure static boolean lemma_nopath(int N, seq<seq<boolean>> G, seq<int> C1, seq<int> C2, int x, int y, seq<int> P) =
+		(1 < |P| && P[0] == x && G[P[0]][P[1]]) ==> lemma_nopath(N, G, C1, C2, P[1], y, tail(P));
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires Path(N, G, x, y, P);
+	requires C1[x] == blue();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	ensures \result && C1[y] == blue();
+	pure static boolean lemma_reachblue(int N, seq<seq<boolean>> G, seq<int> C1, int x, int y, seq<int> P) =
+		1 < |P| ==> lemma_reachblue(N, G, C1, P[1], y, tail(P));
+
+	requires AdjacencyMatrix(N, G) && |A| == N && |C1| == N;
+	requires 0 <= s && s < N && C1[s] == blue();
+	requires 0 <= a && a < N && A[a];
+	requires (\forall int i; 0 <= i && i < |P|; 0 <= P[i] && P[i] < N);
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	requires KeyInvariant(N, G, A, C1);
+	requires Path(N, G, s, a, P) && A[a];
+	ensures \result && !ExPath(N, G, a, a, 2);
+	pure static boolean lemma_nocycle_1(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> C1, int s, int a, seq<int> P) =
+		lemma_reachblue(N, G, C1, s, a, P);
+
+	requires AdjacencyMatrix(N, G) && |A| == N && |C1| == N;
+	requires 0 <= s && s < N && C1[s] == blue();
+	requires 0 <= a && a < N && A[a];
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	requires KeyInvariant(N, G, A, C1);
+	ensures ExPath(N, G, s, a, 2) ==> !ExPath(N, G, a, a, 2);
+	ensures \result;
+	pure static boolean lemma_nocycle_2(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> C1, int s, int a) =
+		(\forall seq<int> P; Path(N, G, s, a, P); lemma_nocycle_1(N, G, A, C1, s, a, P));
+
+	requires AdjacencyMatrix(N, G) && |A| == N && |C1| == N;
+	requires 0 <= s && s < N && C1[s] == blue();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	requires KeyInvariant(N, G, A, C1);
+	ensures (\forall int v; 0 <= v && v < N && A[v] && ExPath(N, G, s, v, 1); !ExPath(N, G, v, v, 2));
+	ensures \result;
+	pure static boolean lemma_nocycle_3(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> C1, int s) =
+		(\forall int v; 0 <= v && v < N && A[v]; lemma_nocycle_2(N, G, A, C1, s, v));
+
+	requires AdjacencyMatrix(N, G) && |A| == N && |C1| == N;
+	requires 0 <= s && s < N && C1[s] == blue();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	requires KeyInvariant(N, G, A, C1);
+	ensures !(\exists int v; 0 <= v && v < N && A[v] && ExPath(N, G, s, v, 1); ExPath(N, G, v, v, 2));
+	ensures \result;
+	pure static boolean lemma_nocycle(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> C1, int s) =
+		lemma_nocycle_3(N, G, A, C1, s);
+	
+	requires AdjacencyMatrix(N, G) && |A| == N && |C1| == N;
+	requires 0 <= s && s < N && C1[s] == blue();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == blue(); (\forall int w; 0 <= w && w < N && G[v][w]; C1[w] == blue())); // `Next(Blue, Blue)`
+	requires KeyInvariant(N, G, A, C1);
+	ensures !ExAccCycle(N, G, A, s);
+	static void lemma_nocycle_m(int N, seq<seq<boolean>> G, seq<boolean> A, seq<int> C1, int s) {
+		assert lemma_nocycle(N, G, A, C1, s);
+	}
+	
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 0 <= s && s < N && 0 <= t && t < N && G[s][t];
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, t, 1));
+	ensures \result;
+	pure static boolean lemma_nextcyan(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t) = 
+		(\forall int v; 0 <= v && v < N && C1[v] == cyan();
+			lemma_edge_path(N, G, s, t) && lemma_expath_trans(N, G, v, s, t, 1, 1));
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 0 <= s && s < N && 0 <= t && t < N && G[s][t];
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, t, 1));
+	static void lemma_nextcyan_m(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t) {
+		assert lemma_nextcyan(N, G, C1, s, t);
+	}
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 1 < |P| && Path(N, G, s, t, P);
+	requires C1[t] == cyan();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures ExPath(N, G, s, s, 2);
+	ensures \result;
+	pure static boolean lemma_cyclefoundhere(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t, seq<int> P) =
+		lemma_expath_trans(N, G, s, t, s, 2, 1);
+
+	requires AdjacencyMatrix(N, G) && |C1| == N;
+	requires 1 < |P| && Path(N, G, s, t, P);
+	requires C1[t] == cyan();
+	requires (\forall int v; 0 <= v && v < N && C1[v] == cyan(); ExPath(N, G, v, s, 1));
+	ensures ExPath(N, G, s, s, 2);
+	static void lemma_cyclefoundhere_m(int N, seq<seq<boolean>> G, seq<int> C1, int s, int t, seq<int> P) {
+		assert lemma_cyclefoundhere(N, G, C1, s, t, P);
+	}
+	
+	
+	/* ** Nested DFS */
+	
+	context 0 < n;
+	requires (\forall* int t; 0 <= t && t < n; Perm(threads, 1/(2*n)));
+	ensures Perm(threads, n/(2*n));
+	ensures threads == \old(threads);
+	void lemma_threads_mergeperms(int n) {
+		int i = 0;
+		
+		loop_invariant 0 <= i && i <= n;
+		loop_invariant Perm(threads, i/(2*n));
+		loop_invariant (\forall* int t; i <= t && t < n; Perm(threads, 1/(2*n)));
+		loop_invariant threads == \old(threads);
+		while (i < n) {
+			i = i + 1;
+		}
+	}
+	
+	context 0 < n;
+	requires Perm(threads, n/(2*n));
+	ensures Perm(threads, 1/2);
+	ensures threads == \old(threads);
+	void lemma_threads_convperms(int n) {
+	}
+	
+	given int nthreads;
+	yields int b; // explicit witness
+	yields seq<int> Q; // explicit witness
+	context Perm(N, 1) ** Perm(G, 1) ** Perm(A, 1);
+	context AdjacencyMatrix(N, G) && |A| == N;
+	context 0 <= root && root < N;
+	context Perm(abort, 1/2) ** Perm(result, 1) ** Perm(a, 1) ** Perm(P, 1);
+	context 0 < nthreads;
+	context Perm(threads, 1/2);
+	context nthreads == |threads|;
+	context (\forall int i; 0 <= i && i < |threads|; threads[i] != null);
+	context (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].master, 1) ** threads[i].master == this);
+	context (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].tid, 1) ** threads[i].tid == i);
+	context (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].nthreads, 1) ** threads[i].nthreads == |threads|);
+	context (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].C1, 1) ** |threads[i].C1| == N);
+	context (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].C2, 1) ** |threads[i].C2| == N);
+	context (\forall int i; 0 <= i && i < |threads|; ColorTypes(threads[i].C1, threads[i].C2));
+	requires (\forall int i; 0 <= i && i < |threads|; (\forall int v; 0 <= v && v < N; threads[i].C1[v] == white() && threads[i].C2[v] == white()));
+	requires (\forall* int i; 0 <= i && i < |threads|; Perm(threads[i].term, 1/2) ** !threads[i].term);
+	/* soundness */
+	ensures \result ==> 0 <= b && b < N && A[b];
+	ensures \result ==> Path(N, G, root, b, Q) && ExPath(N, G, b, b, 2);
+	/* completeness */
+	ensures (\exists int v; 0 <= v && v < N && A[v] && ExPath(N, G, root, v, 1); ExPath(N, G, v, v, 2)) ==> \result;
+	boolean ndfs(int root) {
+		lock this;
+		this.abort = false; // reset the global abort flag
+		unlock this;
+		
+		invariant inv(
+			Perm(this.abort, 1/2) ** Perm(this.result, 1) ** Perm(this.a, 1) ** Perm(this.P, 1) **
+			((this.abort && this.result == found()) ==> (0 <= this.a && this.a < N && A[this.a])) **
+			((this.abort && this.result == found()) ==> (Path(N, G, root, this.a, this.P) && ExPath(N, G, this.a, this.a, 2))) **
+			(this.abort ==> (ExAccCycle(N, G, A, root) ==> this.result == found()))
+		)
+		{ //;
+			par (int tid = 0 .. nthreads)
+				context 0 < nthreads;
+				context Perm(N, 1/nthreads) ** Perm(G, 1/nthreads) ** Perm(A, 1/nthreads);
+				context AdjacencyMatrix(N, G) && |A| == N;
+				context 0 <= root && root < N;
+				context Perm(threads, 1/(2*nthreads)) ** nthreads == |threads|;
+				context threads[tid] != null;
+				context Perm(threads[tid].master, 1) ** threads[tid].master == this;
+				context Perm(threads[tid].tid, 1) ** threads[tid].tid == tid;
+				context Perm(threads[tid].nthreads, 1) ** threads[tid].nthreads == nthreads;
+				context Perm(threads[tid].C1, 1) ** |threads[tid].C1| == N;
+				context Perm(threads[tid].C2, 1) ** |threads[tid].C2| == N;
+				context ColorTypes(threads[tid].C1, threads[tid].C2);
+				context Perm(threads[tid].term, 1/2);
+				requires (\forall int v; 0 <= v && v < N; threads[tid].C1[v] == white() && threads[tid].C2[v] == white());
+				requires !threads[tid].term;
+				ensures threads == \old(threads);
+				ensures threads[tid].term;
+			{
+				int a;
+				seq<int> P;
+				int found = threads[tid].dfsblue(N, G, A, root) with { a = a; P = P; };
+				
+				if (found == notfound()) {
+					lemma_nocycle_m(N, G, A, threads[tid].C1, root);
+				}
+				
+				if (found != aborted()) {
+					assert ExAccCycle(N, G, A, root) ==> found == found();
+				}
+				
+				if (found == found() || found == notfound()) {
+					lock this;
+					if (!abort) {
+						atomic(inv) {
+							this.abort = true;
+							this.result = found;
+							this.a = a;
+							this.P = P;
+						}
+					}
+					threads[tid].term = true;
+					unlock this;
+				}
+			}
+		}
+		
+		assert threads[0].term; // as there is at least one thread
+		lock this; unlock this; // derive `abort == true` from the lock invariant
+		assert abort;
+		
+		lemma_threads_mergeperms(nthreads);
+		lemma_threads_convperms(nthreads);
+		
+		b = this.a;
+		Q = this.P;
+		return result == found();
+	}
+}

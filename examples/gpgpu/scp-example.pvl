@@ -1,0 +1,20 @@
+kernel demo {
+
+// check with vct --chalice --single-group
+
+  global int[gsize] a;
+  global int[gsize] b;
+  
+  requires perm(a[tid],100) * perm(b[tid],100);
+  ensures  perm(b[tid],100) * b[tid] = (tid+1) mod gsize;
+  void main(){
+    a[tid]:=tid;
+    barrier(global){
+      requires a[tid]=tid;
+      ensures perm(a[(tid+1) mod gsize],10) * perm(b[tid],100);
+      ensures a[(tid+1) mod gsize]=(tid+1) mod gsize;
+    }
+    b[tid]:=a[(tid+1) mod gsize];
+  }
+}
+

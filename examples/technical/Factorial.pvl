@@ -1,0 +1,10 @@
+class Factorial {
+  ensures \result == (n>1 ? n*fact(n-1): 1);
+  pure int fact(int n) {
+    return n<=1 ? 1 : n*fact(n-1);
+  }
+
+  void main() {
+    assert (\forall int i; 0<i; fact(i) == i * fact(i-1));
+  }
+}

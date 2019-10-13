@@ -1,0 +1,4 @@
+class Subscripts {
+  invariant (\forall int i; 0<=i && i<|s|/2; s[i] == s[2*i]);
+  void fun(seq<int> s);
+}

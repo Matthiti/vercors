@@ -1,0 +1,46 @@
+class Point {
+  int x;
+  int y;
+}
+
+class Main {
+  void main(){
+    Point p := new Point;
+    p.x := 2;
+    p.y := 6;
+
+    X obj1 := new X;
+    obj1.p := p;
+    fork obj1;
+    
+    Y obj2 := new Y;
+    obj2.p := p;
+    fork obj2;
+
+    join obj1;
+    join obj2;
+    assert pointsto(p.x,100,3) * pointsto(p.y,100,7);
+  }
+}
+
+class X {
+  Point p;
+  
+  requires perm(this.p,33) * perm(this.p.x,100);
+  ensures perm(this.p,33) * pointsto(this.p.x,100,old(this.p.x)+1);
+  void run() {
+    Point q := this.p;
+    q.x := q.x+1 ;
+  }
+}
+
+class Y {
+  Point p;
+
+  requires perm(this.p,33) * perm(this.p.y,100);
+  ensures perm(this.p,33) * pointsto(this.p.y,100,old(this.p.y)+1);
+  void run() {
+    Point q := this.p;
+    q.y := q.y+1 ;
+  }
+}

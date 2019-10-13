@@ -1,0 +1,13 @@
+class Future {       int x, y;
+
+  requires x > 0 && y > x;  ensures  y == \old(y) - \old(x);   process decr_y();
+  requires x > y && y > 0;  ensures  x == \old(x) - \old(y);   process decr_x();
+  requires x==y;                                               process done();
+
+  requires x > 0 && y > 0;
+  ensures  x==y && y==ParallelGCD.gcd(\old(x),\old(y));
+  process gcd()=tx()||ty();
+  
+  process tx()=decr_x()*tx() + done();
+  process ty()=decr_y()*ty() + done();
+}
