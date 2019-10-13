@@ -1,3 +1,8 @@
+// -*- tab-width:2 ; indent-tabs-mode:nil -*-
+//:: cases IncrThread-E1
+//:: suite skip-travis
+//:: tool silicon
+
 void setVal(int[M][N] matrix, int i, int j, int val) {
   matrix[i][j] = val;
 }

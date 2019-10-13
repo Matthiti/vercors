@@ -1,3 +1,8 @@
+// -*- tab-width:2 ; indent-tabs-mode:nil -*-
+//:: cases IncrThread-E1
+//:: suite skip-travis
+//:: tool silicon
+
   invariant ar != null ** N > 0 ** M > 0 ** \array(ar,M*N);
   context Perm(res,write) ** (\forall* int i;0 <= i && i < M*N ; Perm(ar[i],1/2));
   requires res==0;

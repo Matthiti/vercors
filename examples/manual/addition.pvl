@@ -1,4 +1,8 @@
 // -*- tab-width:2 ; indent-tabs-mode:nil -*-
+//:: cases IncrThread-E1
+//:: suite skip-travis
+//:: tool chalice
+
 /*
  * This example verifies a toy example of a kernel barrier.
  *

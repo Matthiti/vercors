@@ -1,3 +1,8 @@
+// -*- tab-width:2 ; indent-tabs-mode:nil -*-
+//:: cases IncrThread-E1
+//:: suite skip-travis
+//:: tool silicon
+
 class ParallelGCD {
   requires a > 0 ** b > 0;
   static int gcd(int a,int b)=a==b?a:(a>b?gcd(a-b,b):gcd(a,b-a));

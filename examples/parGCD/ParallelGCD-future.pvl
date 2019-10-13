@@ -1,3 +1,8 @@
+// -*- tab-width:2 ; indent-tabs-mode:nil -*-
+//:: cases IncrThread-E1
+//:: suite skip-travis
+//:: tool silicon
+
 class Future {       int x, y;
 
   requires x > 0 && y > x;  ensures  y == \old(y) - \old(x);   process decr_y();
