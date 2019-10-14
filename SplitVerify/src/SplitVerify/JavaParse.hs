@@ -144,7 +144,7 @@ textOrComment r
  where
     commentInline :: Boomerang StringError String r ([Char] :- r)
     commentInline
-     = lookN (\x -> take 2 x /= "*/") . rCons . satisfy (const True) . (commentInline <.> rNil)
+     = lookN (\x -> take 2 x /= "*/") . (rCons . satisfy (const True) . commentInline <.> rNil)
 
 -- | statisfy a 'Char' predicate and say what you expect
 satisfy' :: (Char -> Bool) -> String -> StringBoomerang r (Char :- r)
