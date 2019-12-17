@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-overlapping-patterns -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints #-}
-{-# LANGUAGE TemplateHaskell, TypeOperators, OverloadedStrings, NoImplicitPrelude #-}
+{-# LANGUAGE TemplateHaskell #-}
 module SplitVerify.JavaStructures where
 import qualified RIO.Text as T
 import RIO
@@ -52,6 +52,7 @@ data ClassItem
              MethodHeader -- function name and arguments
              DefinitionExpr
     | Declaration Balanced
+    | NoItem T.Text -- just whitespace (no ;). Should not occur in normalised ClassContent.
     deriving (Show,Eq,Ord,Generic)
 data DefinitionExpr
     = NoDefinition

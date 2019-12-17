@@ -30,29 +30,29 @@ instance (GFoldInstance k b a) => GFold k b (K1 i a) where
   gfold f (K1 x) = gfoldInstance f x
 
 class FoldGeneric k b a where
-    foldGeneric :: Phantom k -> a -> b
+  foldGeneric :: Phantom k -> a -> b
 instance (GFold k b (Rep a), Generic a) => FoldGeneric k b a where
   --foldGeneric :: FoldGeneric k b a => Phantom k -> a -> b
   foldGeneric x = gfold x . from
 
-class FmapLike k f where
-   gmap :: Phantom k -> f a -> f a
-class FmapInstance k a where
-   gmapinstance :: Phantom k -> a -> a
+class FmapLike k arg f where
+   gmap :: Phantom k -> arg -> f a -> f a
+class FmapInstance k arg a where
+   gmapinstance :: Phantom k -> arg -> a -> a
 
-instance FmapLike x U1 where
-  gmap _ U1 = U1
-instance (FmapLike x a, FmapLike x b) => FmapLike x (a :*: b) where
-  gmap f (x :*: y) = gmap f x :*: gmap f y
-instance (FmapLike x a, FmapLike x b) => FmapLike x (a :+: b) where
-  gmap f (L1 x) = L1 $ gmap f x
-  gmap f (R1 x) = R1 $ gmap f x
-instance (FmapLike x a) => FmapLike x (M1 i c a) where
-  gmap f (M1 x) = M1 $ gmap f x
-instance FmapInstance x a => FmapLike x (K1 i a) where
-  gmap f (K1 x) = K1 $ gmapinstance f x
+instance FmapLike x arg U1 where
+  gmap _ _ U1 = U1
+instance (FmapLike x arg a, FmapLike x arg b) => FmapLike x arg (a :*: b) where
+  gmap f arg (x :*: y) = gmap f arg x :*: gmap f arg y
+instance (FmapLike x arg a, FmapLike x arg b) => FmapLike x arg (a :+: b) where
+  gmap f arg (L1 x) = L1 $ gmap f arg x
+  gmap f arg (R1 x) = R1 $ gmap f arg x
+instance (FmapLike x arg a) => FmapLike x arg (M1 i c a) where
+  gmap f arg (M1 x) = M1 $ gmap f arg x
+instance FmapInstance x arg a => FmapLike x arg (K1 i a) where
+  gmap f arg (K1 x) = K1 $ gmapinstance f arg x
 
-class (FmapLike k (Rep a), Generic a) => MapGeneric k a where
-instance (FmapLike k (Rep a), Generic a) => MapGeneric k a where
-mapGeneric :: MapGeneric k a => Phantom k -> a -> a
-mapGeneric x = GHC.Generics.to . gmap x . from
+class (FmapLike k arg (Rep a), Generic a) => MapGeneric k arg a where
+instance (FmapLike k arg (Rep a), Generic a) => MapGeneric k arg a where
+mapGeneric :: MapGeneric k arg a => Phantom k -> arg -> a -> a
+mapGeneric x arg = GHC.Generics.to . gmap x arg . from
