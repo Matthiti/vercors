@@ -1,18 +1,23 @@
 package viper.api
 
 import viper.silver.ast._
+
 import scala.collection.JavaConverters._
 import scala.collection.JavaConverters._
-import viper.silver.verifier.{Failure, Success, AbortedExceptionally, VerificationError}
+import viper.silver.verifier.{AbortedExceptionally, Failure, Success, VerificationError}
 import java.util.List
 import java.util.Properties
 import java.util.SortedMap
+
 import scala.math.BigInt.int2bigInt
 import viper.silver.ast.SeqAppend
 import java.nio.file.Path
+import java.util
+
 import viper.silver.parser.PLocalVarDecl
+
 import scala.collection.mutable.WrappedArray
-import hre.lang.System.Output
+import hre.lang.System.{Output, Warning, Abort}
 
 class SilverImplementation[O,Err](o:OriginFactory[O])
   extends viper.api.ViperAPI[O,Err,Type,Exp,Stmt,DomainFunc,DomainAxiom,Prog](o,
@@ -60,6 +65,18 @@ class SilverImplementation[O,Err](o:OriginFactory[O])
               prog.functions.asScala.toList,
               prog.predicates.asScala.toList,
               prog.methods.asScala.toList)()
+
+    var importantError = false
+    for(error <- program.checkTransitively) {
+      if(!error.message.contains("is not a valid identifier")) {
+        importantError = true
+        Warning("Consistency error: %s", error.message)
+      }
+    }
+
+    if(importantError) {
+      Abort("Exited because of consistency errors above")
+    }
               
     //println("=============\n" + program + "\n=============\n")
     
