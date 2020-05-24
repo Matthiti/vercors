@@ -75,6 +75,10 @@ valStatement
  | 'spec_ignore' '{'
  | 'action' langExpr ',' langExpr ',' langExpr ',' langExpr valActionMap* ';'
  | 'atomic' '(' valExpressionList? ')' langStatement
+ | 'charge_ob' langExpr ';'
+ | 'discharge_ob' langExpr ';'
+// | 'charge_ob' '(' langExpr (',' langExpr)? ')' ';'
+// | 'discharge_ob' '(' langExpr (',' langExpr)? ')' ';'
  ;
 
 valActionMap: ',' langExpr ',' langExpr;
@@ -119,6 +123,9 @@ valPrimary
     | '\\msum' '(' langExpr ',' langExpr ')'
     | '\\mcmp' '(' langExpr ',' langExpr ')'
     | '\\mrep' '(' langExpr ')'
+    | '\\obs' '(' langExpr ')'
+    | '\\lock' '(' langExpr ')'
+    | '\\cond' '(' langExpr ')'
     | 'Reducible' '(' langExpr ',' valReducibleOperator ')'
     | langId ':' langExpr
     ;

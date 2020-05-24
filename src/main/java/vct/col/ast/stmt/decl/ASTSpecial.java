@@ -121,7 +121,15 @@ public class ASTSpecial extends ASTDeclaration {
     /**
      * Continue a loop.
      */
-    Continue(-1)
+    Continue(-1),
+    /**
+     * Charges an obligation
+     */
+    ChargeOb(1),
+    /**
+     * Discharges an obligation
+     */
+    DischargeOb(1)
     ;
 
     

@@ -80,6 +80,8 @@ VAL_SPEC_IGNORE: 'spec_ignore';
 VAL_ACTION: 'action';
 VAL_ATOMIC: 'atomic';
 VAL_REDUCIBLE: 'Reducible';
+VAL_CHARGE_OB: 'charge_ob';
+VAL_DISCHARGE_OB: 'discharge_ob';
 
 UNFOLDING: '\\unfolding';
 IN: '\\in';
@@ -105,6 +107,9 @@ MSUM: '\\msum';
 MCMP: '\\mcmp';
 MREP: '\\mrep';
 RESULT: '\\result';
+OBS: '\\obs';
+LOCK: '\\lock';
+COND: '\\cond';
 
 NONE: 'none';
 OPTION_NONE: 'None';

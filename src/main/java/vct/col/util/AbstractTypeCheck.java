@@ -1480,6 +1480,17 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
 
         e.setType(elementType);
         break;
+      case Obligations:
+        // TODO: check if correct
+        e.setType(new PrimitiveType(PrimitiveSort.Boolean));
+        break;
+      case CondVarOf:
+      case LockOf:
+        // TODO: check if correct
+        Type t = e.arg(0).getType();
+        if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
+        e.setType(t);
+        break;
       default:
         Abort("missing case of operator %s", op);
         break;
@@ -1912,6 +1923,13 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
       }
       s.setType(new PrimitiveType(PrimitiveSort.Void));
       break;
+    }
+    case ChargeOb:
+    case DischargeOb:
+    {
+      Type t = s.args[0].getType();
+      if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      // TODO: implement type checking
     }
     }
     s.setType(new PrimitiveType(PrimitiveSort.Void));

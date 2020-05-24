@@ -102,6 +102,9 @@ public class VerCorsSyntax {
     syntax.addFunction(StandardOperator.MatrixSum, "\\msum");
     syntax.addFunction(StandardOperator.MatrixRepeat, "\\mrep");
     syntax.addFunction(StandardOperator.MatrixCompare, "\\mcmp");
+    syntax.addFunction(StandardOperator.Obligations, "\\obs");
+    syntax.addFunction(StandardOperator.LockOf, "\\lock");
+    syntax.addFunction(StandardOperator.CondVarOf, "\\cond");
   }
 
 }

@@ -835,6 +835,10 @@ case class JavaJMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: Jav
           create label name.getName
         case other => other
       }:_*)
+    case ValStatement31(_charge_ob, expr, _) =>
+      create special ASTSpecial.Kind.ChargeOb
+    case ValStatement32(_discharge_ob, expr, _) =>
+      create special ASTSpecial.Kind.DischargeOb
   })
 
   def valExpr(exp: ValPrimaryContext): ASTNode = origin(exp, exp match {
@@ -910,7 +914,13 @@ case class JavaJMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: Jav
       create expression(MatrixCompare, expr(a), expr(b))
     case ValPrimary27("\\mrep", "(", m, ")") =>
       create expression(MatrixRepeat, expr(m))
-    case ValPrimary28("Reducible", "(", exp, _, opNode, ")") =>
+    case ValPrimary28("\\obs", "(", o, ")") =>
+      create expression(Obligations, expr(o))
+    case ValPrimary29("\\lock", "(", o, ")") =>
+      create expression(LockOf, expr(o))
+    case ValPrimary30("\\cond", "(", o, ")") =>
+      create expression(CondVarOf, expr(o))
+    case ValPrimary31("Reducible", "(", exp, _, opNode, ")") =>
       val opText = opNode match {
         case ValReducibleOperator0("+") => "+"
         case ValReducibleOperator1(id) => convertID(id)
@@ -920,7 +930,7 @@ case class JavaJMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: Jav
         case "min" => ReducibleMin
         case "max" => ReducibleMax
       }, expr(exp))
-    case ValPrimary29(label, _, exp) =>
+    case ValPrimary32(label, _, exp) =>
       val res = expr(exp)
       res.addLabel(create label(convertID(label)))
       res

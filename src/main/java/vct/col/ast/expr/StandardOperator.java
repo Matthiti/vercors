@@ -324,7 +324,19 @@ public enum StandardOperator {
   /**
    * compare matrices pointwise
    */
-  MatrixCompare(2)
+  MatrixCompare(2),
+  /**
+   * Define the obligations
+   */
+  Obligations(1),
+  /**
+   * Access the intrinsic lock of an object
+   */
+  LockOf(1),
+  /**
+   * Access the condition variable of an object
+   */
+  CondVarOf(1)
   ;
 
   private final int arity;

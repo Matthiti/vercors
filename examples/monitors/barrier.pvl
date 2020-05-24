@@ -1,0 +1,22 @@
+class Barrier {
+    int n;
+
+    Barrier(int n) {
+        this.n = n;
+    }
+
+    context Perm(n, write);
+    //requires \lock(this) == this;
+    void waitForBarrier() {
+        n = n - 1;
+        if (n == 0) {
+            notify this;
+            discharge_ob this;
+        } else {
+            discharge_ob this;
+            while (n > 0) {
+                wait this;
+            }
+        }
+    }
+}
