@@ -835,10 +835,10 @@ case class JavaJMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: Jav
           create label name.getName
         case other => other
       }:_*)
-    case ValStatement31(_charge_ob, expr, _) =>
-      create special ASTSpecial.Kind.ChargeOb
-    case ValStatement32(_discharge_ob, expr, _) =>
-      create special ASTSpecial.Kind.DischargeOb
+    case ValStatement31(_charge_ob, arg, _) =>
+      create special(ASTSpecial.Kind.ChargeOb, expr(arg))
+    case ValStatement32(_discharge_ob, arg, _) =>
+      create special(ASTSpecial.Kind.DischargeOb, expr(arg))
   })
 
   def valExpr(exp: ValPrimaryContext): ASTNode = origin(exp, exp match {

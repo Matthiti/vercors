@@ -1929,7 +1929,11 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
     {
       Type t = s.args[0].getType();
       if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
-      // TODO: implement type checking
+      if (!(t instanceof ClassType)) {
+        Fail("Argument of %s must be a class type at %s", s.kind, s.getOrigin());
+      }
+
+      break;
     }
     }
     s.setType(new PrimitiveType(PrimitiveSort.Void));

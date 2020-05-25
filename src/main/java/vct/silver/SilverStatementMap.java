@@ -291,6 +291,12 @@ public class SilverStatementMap<T,E,S> implements ASTMapping<S> {
     case Fold: return create.fold(special.getOrigin(),special.args[0].apply(expr));
     case Unfold: return create.unfold(special.getOrigin(),special.args[0].apply(expr));
     case Fresh: return create.fresh(special.getOrigin(),do_names(special.args));
+//    case ChargeOb:
+//      valid_null = true;
+//      return null;
+//    case DischargeOb:
+//      valid_null = true;
+//      return null;
     default:
       throw new HREError("cannot map special %s",special.kind);
     }

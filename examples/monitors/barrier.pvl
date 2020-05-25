@@ -5,18 +5,21 @@ class Barrier {
         this.n = n;
     }
 
+    resource lock_invariant() = Perm(n, write);
+
     context Perm(n, write);
-    //requires \lock(this) == this;
     void waitForBarrier() {
+        lock this;
         n = n - 1;
         if (n == 0) {
-            notify this;
             discharge_ob this;
+            notify this;
         } else {
             discharge_ob this;
             while (n > 0) {
                 wait this;
             }
         }
+        unlock this;
     }
 }
