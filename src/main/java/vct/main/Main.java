@@ -13,7 +13,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
-import java.util.stream.Collectors;
 
 import hre.ast.FileOrigin;
 import hre.config.*;
@@ -355,6 +354,8 @@ public class Main
       } else if (silver.used()||chalice.get()) {
         passes=new LinkedBlockingDeque<String>();
         passes.add("java_resolve");
+
+        passes.add("java-monitor-encode");
 
         if (silver.used() &&
            (features.usesSpecial(ASTSpecial.Kind.Lock)
@@ -1136,6 +1137,11 @@ public class Main
     defined_passes.put("standardize",new CompilerPass("Standardize representation"){
       public ProgramUnit apply(ProgramUnit arg,String ... args){
         return new Standardize(arg).rewriteAll();
+      }
+    });
+    defined_passes.put("java-monitor-encode", new CompilerPass("Encode wait, notify and notifyAll") {
+      public ProgramUnit apply(ProgramUnit arg, String... args) {
+        return new JavaMonitorEncoder(arg).rewriteAll();
       }
     });
     defined_passes.put("strip_constructors",new CompilerPass("Strip constructors from classes"){
