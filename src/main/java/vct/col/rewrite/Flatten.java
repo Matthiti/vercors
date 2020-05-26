@@ -221,7 +221,9 @@ public class Flatten extends AbstractRewriter {
     ASTNode init = s.initJava();
     if (init!=null) {
       if (current_block==null){
-        Abort("internal error: current block is null");
+//        Abort("internal error: current block is null");
+        super.visit(s);
+        return;
       }
       current_block.addStatement(create.field_decl(name,t,null));
       init=init.apply(this);

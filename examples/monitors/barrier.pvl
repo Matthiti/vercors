@@ -9,17 +9,19 @@ class Barrier {
 
     context Perm(n, write);
     void waitForBarrier() {
+        charge_ob this;
         lock this;
         n = n - 1;
         if (n == 0) {
-            discharge_ob this;
             notify this;
+            // discharge_ob this;
         } else {
-            discharge_ob this;
-            while (n > 0) {
+            //discharge_ob this;
+            if (n > 0) {
                 wait this;
             }
         }
+        charge_ob this;
         unlock this;
     }
 }
