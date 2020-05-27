@@ -53,6 +53,7 @@ public class ObligationRewriter extends AbstractRewriter {
             incrementOt(s.getArg(0))
             // TODO: add also to obs
         );
+        break;
       case DischargeOb:
         result = create.block(
             // TODO: add assertion that it is in obs
@@ -199,9 +200,9 @@ public class ObligationRewriter extends AbstractRewriter {
     };
 
     ReturnStatement stat = create.return_statement(
-      create.expression(StandardOperator.Or,
-          create.expression(StandardOperator.EQ, create.local_name("Wt"), create.constant(0)),
-          create.expression(StandardOperator.GT, create.local_name("Ot"), create.constant(0))
+        create.expression(StandardOperator.Or,
+        create.expression(StandardOperator.EQ, create.local_name("Wt"), create.constant(0)),
+        create.expression(StandardOperator.GT, create.local_name("Ot"), create.constant(0))
       )
     );
 

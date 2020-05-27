@@ -2,26 +2,32 @@ public class MonitorBarrier {
 
   private int n;
 
+  /*@
+    ensures Perm(this.n, write);
+   */
   public MonitorBarrier(int n) {
     this.n = n;
   }
 
+  /*@
+    context Perm(n, write);
+   */
   public synchronized void waitForBarrier() {
     n--;
     if (n == 0) {
-      notifyAll(); // Deadlock if this was notify()
-      /*@
-        discharge_ob this;
-       */
+//      notifyAll();
     } else {
+      //@ loop_invariant Perm(n, write);
       while (n > 0) {
-        wait();
+//        wait();
       }
     }
   }
 
-  public static void main(String[] args) {
-    MonitorBarrier barrier = new MonitorBarrier(1);
-    barrier.waitForBarrier();
+  /*@
+    context Perm(n, write);
+   */
+  public void main() {
+    this.waitForBarrier();
   }
 }
