@@ -1,14 +1,14 @@
 package vct.col.rewrite;
 
 import hre.ast.MessageOrigin;
+import vct.col.ast.expr.Dereference;
 import vct.col.ast.expr.MethodInvokation;
 import vct.col.ast.expr.StandardOperator;
+import vct.col.ast.generic.ASTNode;
 import vct.col.ast.stmt.decl.*;
 import vct.col.ast.stmt.terminal.ReturnStatement;
 import vct.col.ast.type.PrimitiveSort;
 import vct.col.ast.util.ContractBuilder;
-
-import java.util.ArrayList;
 
 public class ObligationRewriter extends AbstractRewriter {
 
@@ -25,41 +25,152 @@ public class ObligationRewriter extends AbstractRewriter {
   public void visit(ASTSpecial s) {
     switch (s.kind) {
       case Wait:
-        int n = 0;
+        result = create.block(
+            create.special(
+                ASTSpecial.Kind.Assert,
+                enoughObs(
+                    s.getArg(0),
+                    create.expression(StandardOperator.Plus, Wt(s.getArg(0)), create.constant(1)),
+                    Ot(s.getArg(0)))
+            ),
+            incrementWt(s.getArg(0))
+        );
         break;
       case Notify:
+        result = create.ifthenelse(
+            create.expression(StandardOperator.GT, Wt(s.getArg(0)), constant(0)),
+            decrementWt(s.getArg(0))
+        );
         break;
       case NotifyAll:
+        result = create.assignment(
+            Wt(s.getArg(0)),
+            create.constant(0)
+        );
+        break;
+      case ChargeOb:
+        result = create.block(
+            incrementOt(s.getArg(0))
+            // TODO: add also to obs
+        );
+      case DischargeOb:
+        result = create.block(
+            // TODO: add assertion that it is in obs
+//            create.special(
+//                ASTSpecial.Kind.Assert,
+//                create.expression(
+//                    StandardOperator.GT,
+//                    Ot(s.getArg(0)),
+//                    create.constant(0)
+//                )
+//            ),
+            create.special(
+                ASTSpecial.Kind.Assert,
+                enoughObs(
+                    s.getArg(0),
+                    create.expression(StandardOperator.Minus, Wt(s.getArg(0)), create.constant(1)),
+                    Ot(s.getArg(0)))
+            ),
+            decrementOt(s.getArg(0))
+            // TODO: remove also from obs
+        );
         break;
       default:
         super.visit(s);
     }
   }
 
-  @Override
-  public void visit(Method m) {
-    ArrayList<DeclarationStatement> args = new ArrayList<>();
-    args.add(create.field_decl(OBLIGATION_VARIABLE, create.class_type(obligationClass.name())));
+  private Dereference Wt(ASTNode object) {
+    return create.dereference(
+        create.dereference(
+            object,
+            OBLIGATION_VARIABLE
+        ),
+        "Wt"
+    );
+  }
 
-    for (DeclarationStatement arg : m.getArgs()) {
-      args.add(rewrite(arg));
-    }
+  private Dereference Ot(ASTNode object) {
+    return create.dereference(
+        create.dereference(
+            object,
+            OBLIGATION_VARIABLE
+        ),
+        "Ot"
+    );
+  }
 
-    result = create.method_kind(m.getKind(), rewrite(m.getReturnType()), rewrite(m.getContract()), m.getName(), args, m.usesVarArgs(), rewrite(m.getBody()));
+  private MethodInvokation enoughObs(ASTNode object, ASTNode Wt, ASTNode Ot) {
+    return create.invokation(
+        create.dereference(
+            object,
+            OBLIGATION_VARIABLE
+        ),
+        null,
+        ENOUGH_OBS_METHOD,
+        Wt, Ot
+    );
+  }
+
+  private ASTNode incrementWt(ASTNode v) {
+    return create.assignment(
+        Wt(v),
+        create.expression(
+            StandardOperator.Plus,
+            Wt(v),
+            create.constant(1)
+        )
+    );
+  }
+
+  private ASTNode decrementWt(ASTNode v) {
+    return create.assignment(
+        Wt(v),
+        create.expression(
+            StandardOperator.Minus,
+            Wt(v),
+            create.constant(1)
+        )
+    );
+  }
+
+  private ASTNode incrementOt(ASTNode v) {
+    return create.assignment(
+        Ot(v),
+        create.expression(
+            StandardOperator.Plus,
+            Ot(v),
+            create.constant(1)
+        )
+    );
+  }
+
+  private ASTNode decrementOt(ASTNode v) {
+    return create.assignment(
+        Ot(v),
+        create.expression(
+            StandardOperator.Minus,
+            Ot(v),
+            create.constant(1)
+        )
+    );
   }
 
   @Override
-  public void visit(MethodInvokation s) {
-    MethodInvokation res = create.invokation(
-        rewrite(s.object),
-        s.dispatch,
-        s.method,
-        rewrite(create.local_name(OBLIGATION_VARIABLE), s.getArgs())
-    );
+  public void visit(ASTClass c) {
+    // Check if this is a generated class. If so, don't inject the obligation variables.
+    if (c.getOrigin() instanceof MessageOrigin) {
+      super.visit(c);
+      return;
+    }
 
-    res.set_before(rewrite(s.get_before()));
-    res.set_after(rewrite(s.get_after()));
-    result = res;
+    ASTNode newObsVars = create.expression(StandardOperator.New, create.class_type(obligationClass.name()));
+    c.add(create.field_decl(
+        OBLIGATION_VARIABLE,
+        create.class_type(obligationClass.name()),
+        newObsVars
+    ));
+    super.visit(c);
   }
 
   @Override
@@ -79,22 +190,23 @@ public class ObligationRewriter extends AbstractRewriter {
 
   private Method enoughObsMethod() {
     ContractBuilder cb = new ContractBuilder();
-    cb.requires(create.expression(StandardOperator.GTE, create.local_name("Wt_v"), create.constant(0)));
-    cb.requires(create.expression(StandardOperator.GTE, create.local_name("Ot_v"), create.constant(0)));
+    cb.requires(create.expression(StandardOperator.GTE, create.local_name("Wt"), create.constant(0)));
+    cb.requires(create.expression(StandardOperator.GTE, create.local_name("Ot"), create.constant(0)));
 
     DeclarationStatement[] args = new DeclarationStatement[] {
-        create.field_decl("Wt_v", create.primitive_type(PrimitiveSort.Integer)),
-        create.field_decl("Ot_v", create.primitive_type(PrimitiveSort.Integer))
+        create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer)),
+        create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer))
     };
 
     ReturnStatement stat = create.return_statement(
       create.expression(StandardOperator.Or,
-          create.expression(StandardOperator.EQ, create.local_name("Wt_v"), create.constant(0)),
-          create.expression(StandardOperator.GT, create.local_name("Ot_v"), create.constant(0))
+          create.expression(StandardOperator.EQ, create.local_name("Wt"), create.constant(0)),
+          create.expression(StandardOperator.GT, create.local_name("Ot"), create.constant(0))
       )
     );
 
-    return create.method_decl(
+    return create.method_kind(
+        Method.Kind.Pure,
         create.primitive_type(PrimitiveSort.Boolean),
         cb.getContract(),
         ENOUGH_OBS_METHOD,
@@ -105,7 +217,8 @@ public class ObligationRewriter extends AbstractRewriter {
 
   private DeclarationStatement[] variables() {
     return new DeclarationStatement[] {
-        create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer), create.constant(42))
+        create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer), create.constant(0)),
+        create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer), create.constant(0))
     };
   }
 }

@@ -10,6 +10,9 @@ public class MonitorBarrier {
     n--;
     if (n == 0) {
       notifyAll(); // Deadlock if this was notify()
+      /*@
+        discharge_ob this;
+       */
     } else {
       while (n > 0) {
         wait();
