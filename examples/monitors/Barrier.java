@@ -28,6 +28,7 @@ public class MonitorBarrier {
     context Perm(n, write);
    */
   public void main() {
+    //@ discharge_ob this;
     this.waitForBarrier();
   }
 }

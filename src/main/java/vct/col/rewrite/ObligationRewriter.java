@@ -3,10 +3,11 @@ package vct.col.rewrite;
 import hre.ast.MessageOrigin;
 import vct.col.ast.expr.Dereference;
 import vct.col.ast.expr.MethodInvokation;
+import vct.col.ast.expr.OperatorExpression;
 import vct.col.ast.expr.StandardOperator;
 import vct.col.ast.generic.ASTNode;
 import vct.col.ast.stmt.decl.*;
-import vct.col.ast.stmt.terminal.ReturnStatement;
+import vct.col.ast.type.ASTReserved;
 import vct.col.ast.type.PrimitiveSort;
 import vct.col.ast.util.ContractBuilder;
 
@@ -59,19 +60,11 @@ public class ObligationRewriter extends AbstractRewriter {
             // TODO: add assertion that it is in obs
 //            create.special(
 //                ASTSpecial.Kind.Assert,
-//                create.expression(
-//                    StandardOperator.GT,
-//                    Ot(s.getArg(0)),
-//                    create.constant(0)
-//                )
+//                enoughObs(
+//                    s.getArg(0),
+//                    create.expression(StandardOperator.Minus, Wt(s.getArg(0)), create.constant(1)),
+//                    Ot(s.getArg(0)))
 //            ),
-            create.special(
-                ASTSpecial.Kind.Assert,
-                enoughObs(
-                    s.getArg(0),
-                    create.expression(StandardOperator.Minus, Wt(s.getArg(0)), create.constant(1)),
-                    Ot(s.getArg(0)))
-            ),
             decrementOt(s.getArg(0))
             // TODO: remove also from obs
         );
@@ -158,6 +151,82 @@ public class ObligationRewriter extends AbstractRewriter {
   }
 
   @Override
+  public void visit(Method m) {
+    // Don't add pre- and postconditions to fake and static methods
+    // TODO: only check if Constructor, or only allow Method.Kind.Plain?
+    if (m.getOrigin() instanceof MessageOrigin || m.isStatic() || m.getKind().equals(Method.Kind.Constructor)) {
+      super.visit(m);
+      return;
+    }
+
+    ContractBuilder cb = new ContractBuilder();
+    cb.ensures(
+        create.expression(
+            StandardOperator.Perm,
+            create.field_name("obsVars"),
+            create.reserved_name(ASTReserved.ReadPerm)
+        )
+    );
+
+    cb.ensures(
+        create.expression(
+            StandardOperator.Perm,
+            create.dereference(
+                create.field_name("obsVars"),
+                "Ot"
+            ),
+            create.reserved_name(ASTReserved.FullPerm)
+        )
+    );
+
+    cb.ensures(
+        create.expression(
+            StandardOperator.Perm,
+            create.dereference(
+                create.field_name("obsVars"),
+                "Wt"
+            ),
+            create.reserved_name(ASTReserved.FullPerm)
+        )
+    );
+
+    if (m.getKind().equals(Method.Kind.Plain)) {
+      cb.requires(
+          create.expression(
+              StandardOperator.Perm,
+              create.field_name("obsVars"),
+              create.reserved_name(ASTReserved.ReadPerm)
+          )
+      );
+
+      cb.requires(
+          create.expression(
+              StandardOperator.Perm,
+              create.dereference(
+                  create.field_name("obsVars"),
+                  "Ot"
+              ),
+              create.reserved_name(ASTReserved.FullPerm)
+          )
+      );
+
+      cb.requires(
+          create.expression(
+              StandardOperator.Perm,
+              create.dereference(
+                  create.field_name("obsVars"),
+                  "Wt"
+              ),
+              create.reserved_name(ASTReserved.FullPerm)
+          )
+      );
+    }
+
+    rewrite(m.getContract(), cb);
+    result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), rewrite(m.getArgs()), rewrite(m.getBody()));
+  }
+
+  @Override
   public void visit(ASTClass c) {
     // Check if this is a generated class. If so, don't inject the obligation variables.
     if (c.getOrigin() instanceof MessageOrigin) {
@@ -183,36 +252,31 @@ public class ObligationRewriter extends AbstractRewriter {
     for (DeclarationStatement var : variables()) {
       obligationClass.add(var);
     }
-    obligationClass.add_dynamic(enoughObsMethod());
+    obligationClass.add_dynamic(enoughObsPredicate());
 
     res.add(obligationClass);
     return res;
   }
 
-  private Method enoughObsMethod() {
-    ContractBuilder cb = new ContractBuilder();
-    cb.requires(create.expression(StandardOperator.GTE, create.local_name("Wt"), create.constant(0)));
-    cb.requires(create.expression(StandardOperator.GTE, create.local_name("Ot"), create.constant(0)));
-
+  private Method enoughObsPredicate() {
     DeclarationStatement[] args = new DeclarationStatement[] {
         create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer)),
         create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer))
     };
 
-    ReturnStatement stat = create.return_statement(
-        create.expression(StandardOperator.Or,
+    OperatorExpression expr = create.expression(
+        StandardOperator.Or,
         create.expression(StandardOperator.EQ, create.local_name("Wt"), create.constant(0)),
         create.expression(StandardOperator.GT, create.local_name("Ot"), create.constant(0))
-      )
     );
 
     return create.method_kind(
-        Method.Kind.Pure,
-        create.primitive_type(PrimitiveSort.Boolean),
-        cb.getContract(),
+        Method.Kind.Predicate,
+        create.primitive_type(PrimitiveSort.Resource),
+        null,
         ENOUGH_OBS_METHOD,
         args,
-        create.block(stat)
+        expr
     );
   }
 
