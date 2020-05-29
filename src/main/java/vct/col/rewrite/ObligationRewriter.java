@@ -2,7 +2,6 @@ package vct.col.rewrite;
 
 import hre.ast.MessageOrigin;
 import vct.col.ast.expr.Dereference;
-import vct.col.ast.expr.MethodInvokation;
 import vct.col.ast.expr.OperatorExpression;
 import vct.col.ast.expr.StandardOperator;
 import vct.col.ast.generic.ASTNode;
@@ -14,7 +13,6 @@ import vct.col.ast.util.ContractBuilder;
 public class ObligationRewriter extends AbstractRewriter {
 
   private static final String OBLIGATION_VARIABLE = "obsVars";
-  private static final String ENOUGH_OBS_METHOD = "enoughObs";
 
   private ASTClass obligationClass;
 
@@ -30,7 +28,6 @@ public class ObligationRewriter extends AbstractRewriter {
             create.special(
                 ASTSpecial.Kind.Assert,
                 enoughObs(
-                    s.getArg(0),
                     create.expression(StandardOperator.Plus, Wt(s.getArg(0)), create.constant(1)),
                     Ot(s.getArg(0)))
             ),
@@ -65,6 +62,22 @@ public class ObligationRewriter extends AbstractRewriter {
 //                    create.expression(StandardOperator.Minus, Wt(s.getArg(0)), create.constant(1)),
 //                    Ot(s.getArg(0)))
 //            ),
+            create.special(
+                ASTSpecial.Kind.Assert,
+                create.expression(
+                    StandardOperator.Or,
+                    create.expression(
+                        StandardOperator.LTE,
+                        Wt(),
+                        constant(0)
+                    ),
+                    create.expression(
+                        StandardOperator.GT,
+                        Ot(),
+                        constant(0)
+                    )
+                )
+            ),
             decrementOt(s.getArg(0))
             // TODO: remove also from obs
         );
@@ -76,33 +89,45 @@ public class ObligationRewriter extends AbstractRewriter {
 
   private Dereference Wt(ASTNode object) {
     return create.dereference(
-        create.dereference(
+        object != null ? create.dereference(
             object,
             OBLIGATION_VARIABLE
-        ),
+        ) : create.field_name(OBLIGATION_VARIABLE),
         "Wt"
     );
   }
 
+  private Dereference Wt() {
+    return Wt(null);
+  }
+
   private Dereference Ot(ASTNode object) {
     return create.dereference(
-        create.dereference(
+        object != null ? create.dereference(
             object,
             OBLIGATION_VARIABLE
-        ),
+        ) : create.field_name(OBLIGATION_VARIABLE),
         "Ot"
     );
   }
 
-  private MethodInvokation enoughObs(ASTNode object, ASTNode Wt, ASTNode Ot) {
-    return create.invokation(
-        create.dereference(
-            object,
-            OBLIGATION_VARIABLE
+  private Dereference Ot() {
+    return Ot(null);
+  }
+
+  private OperatorExpression enoughObs(ASTNode Wt, ASTNode Ot) {
+    return create.expression(
+        StandardOperator.Or,
+        create.expression(
+            StandardOperator.LTE,
+            Wt,
+            constant(0)
         ),
-        null,
-        ENOUGH_OBS_METHOD,
-        Wt, Ot
+        create.expression(
+            StandardOperator.GT,
+            Ot,
+            constant(0)
+        )
     );
   }
 
@@ -160,6 +185,50 @@ public class ObligationRewriter extends AbstractRewriter {
     }
 
     ContractBuilder cb = new ContractBuilder();
+    cb.requires(
+        create.expression(
+            StandardOperator.Perm,
+            create.field_name("obsVars"),
+            create.reserved_name(ASTReserved.ReadPerm)
+        )
+    );
+
+    cb.requires(
+        create.expression(
+            StandardOperator.Perm,
+            Ot(),
+            create.reserved_name(ASTReserved.FullPerm)
+        )
+    );
+
+    cb.requires(
+        create.expression(
+            StandardOperator.Perm,
+            Wt(),
+            create.reserved_name(ASTReserved.FullPerm)
+        )
+    );
+
+    cb.requires(
+        create.expression(
+            StandardOperator.GTE,
+            Ot(),
+            create.constant(0)
+        )
+    );
+
+    cb.requires(
+        create.expression(
+            StandardOperator.GTE,
+            Wt(),
+            create.constant(0)
+        )
+    );
+
+    cb.requires(
+        enoughObs(Wt(), Ot())
+    );
+
     cb.ensures(
         create.expression(
             StandardOperator.Perm,
@@ -171,10 +240,7 @@ public class ObligationRewriter extends AbstractRewriter {
     cb.ensures(
         create.expression(
             StandardOperator.Perm,
-            create.dereference(
-                create.field_name("obsVars"),
-                "Ot"
-            ),
+            Ot(),
             create.reserved_name(ASTReserved.FullPerm)
         )
     );
@@ -182,45 +248,30 @@ public class ObligationRewriter extends AbstractRewriter {
     cb.ensures(
         create.expression(
             StandardOperator.Perm,
-            create.dereference(
-                create.field_name("obsVars"),
-                "Wt"
-            ),
+            Wt(),
             create.reserved_name(ASTReserved.FullPerm)
         )
     );
 
-    if (m.getKind().equals(Method.Kind.Plain)) {
-      cb.requires(
-          create.expression(
-              StandardOperator.Perm,
-              create.field_name("obsVars"),
-              create.reserved_name(ASTReserved.ReadPerm)
-          )
-      );
+    cb.ensures(
+        create.expression(
+            StandardOperator.GTE,
+            Ot(),
+            create.constant(0)
+        )
+    );
 
-      cb.requires(
-          create.expression(
-              StandardOperator.Perm,
-              create.dereference(
-                  create.field_name("obsVars"),
-                  "Ot"
-              ),
-              create.reserved_name(ASTReserved.FullPerm)
-          )
-      );
+    cb.ensures(
+        create.expression(
+            StandardOperator.GTE,
+            Wt(),
+            create.constant(0)
+        )
+    );
 
-      cb.requires(
-          create.expression(
-              StandardOperator.Perm,
-              create.dereference(
-                  create.field_name("obsVars"),
-                  "Wt"
-              ),
-              create.reserved_name(ASTReserved.FullPerm)
-          )
-      );
-    }
+    cb.ensures(
+        enoughObs(Wt(), Ot())
+    );
 
     rewrite(m.getContract(), cb);
     result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), rewrite(m.getArgs()), rewrite(m.getBody()));
@@ -252,32 +303,9 @@ public class ObligationRewriter extends AbstractRewriter {
     for (DeclarationStatement var : variables()) {
       obligationClass.add(var);
     }
-    obligationClass.add_dynamic(enoughObsPredicate());
 
     res.add(obligationClass);
     return res;
-  }
-
-  private Method enoughObsPredicate() {
-    DeclarationStatement[] args = new DeclarationStatement[] {
-        create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer)),
-        create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer))
-    };
-
-    OperatorExpression expr = create.expression(
-        StandardOperator.Or,
-        create.expression(StandardOperator.EQ, create.local_name("Wt"), create.constant(0)),
-        create.expression(StandardOperator.GT, create.local_name("Ot"), create.constant(0))
-    );
-
-    return create.method_kind(
-        Method.Kind.Predicate,
-        create.primitive_type(PrimitiveSort.Resource),
-        null,
-        ENOUGH_OBS_METHOD,
-        args,
-        expr
-    );
   }
 
   private DeclarationStatement[] variables() {
