@@ -1,7 +1,7 @@
 public class Test {
 
+  //@ requires \Ot >= 2;
   public void main() {
-    //@ charge_ob this;
     //@ discharge_ob this;
   }
 }

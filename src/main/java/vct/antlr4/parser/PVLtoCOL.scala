@@ -871,6 +871,10 @@ case class PVLtoCOL(fileName: String, tokens: CommonTokenStream, parser: PVLPars
       create reserved_name ASTReserved.OptionNone
     case ValReserved7("empty") =>
       create reserved_name ASTReserved.EmptyProcess
+    case ValReserved8("\\Wt") =>
+      create reserved_name ASTReserved.Wt
+    case ValReserved9("\\Ot") =>
+      create reserved_name ASTReserved.Ot
   })
 
   /**

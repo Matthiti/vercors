@@ -2,6 +2,7 @@ package vct.col.rewrite;
 
 import hre.ast.MessageOrigin;
 import vct.col.ast.expr.Dereference;
+import vct.col.ast.expr.NameExpression;
 import vct.col.ast.expr.OperatorExpression;
 import vct.col.ast.expr.StandardOperator;
 import vct.col.ast.generic.ASTNode;
@@ -55,27 +56,15 @@ public class ObligationRewriter extends AbstractRewriter {
       case DischargeOb:
         result = create.block(
             // TODO: add assertion that it is in obs
-//            create.special(
-//                ASTSpecial.Kind.Assert,
-//                enoughObs(
-//                    s.getArg(0),
-//                    create.expression(StandardOperator.Minus, Wt(s.getArg(0)), create.constant(1)),
-//                    Ot(s.getArg(0)))
-//            ),
             create.special(
                 ASTSpecial.Kind.Assert,
-                create.expression(
-                    StandardOperator.Or,
+                enoughObs(
                     create.expression(
-                        StandardOperator.LTE,
+                        StandardOperator.Minus,
                         Wt(),
-                        constant(0)
+                        create.constant(1)
                     ),
-                    create.expression(
-                        StandardOperator.GT,
-                        Ot(),
-                        constant(0)
-                    )
+                    Ot()
                 )
             ),
             decrementOt(s.getArg(0))
@@ -173,6 +162,17 @@ public class ObligationRewriter extends AbstractRewriter {
             create.constant(1)
         )
     );
+  }
+
+  @Override
+  public void visit(NameExpression e) {
+    if (e.isReserved(ASTReserved.Wt)) {
+      result = Wt();
+    } else if (e.isReserved(ASTReserved.Ot)) {
+      result = Ot();
+    } else {
+      super.visit(e);
+    }
   }
 
   @Override

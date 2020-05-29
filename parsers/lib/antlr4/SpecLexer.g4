@@ -110,6 +110,8 @@ RESULT: '\\result';
 OBS: '\\obs';
 LOCK: '\\lock';
 COND: '\\cond';
+WT: '\\Wt';
+OT: '\\Ot';
 
 NONE: 'none';
 OPTION_NONE: 'None';

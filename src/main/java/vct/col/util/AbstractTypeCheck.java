@@ -628,7 +628,7 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
               new ClassType("<<null>>")));
           break;
         }
-      case Result:{
+        case Result:{
           Method m=current_method();
           if (m==null){
             Fail("Use of result keyword outside of a method context.");
@@ -636,7 +636,7 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
           e.setType(m.getReturnType());
           break;
         }
-      case Super:{
+        case Super:{
           ASTClass cl=current_class();
           if (cl==null){
             Fail("use of keyword super outside of class context");
@@ -647,7 +647,12 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
           e.setType(cl.super_classes[0]);
           break;
         }
-      case Any:{
+        case Any:{
+          e.setType(new PrimitiveType(PrimitiveSort.Integer));
+          break;
+        }
+        case Wt:
+        case Ot:{
           e.setType(new PrimitiveType(PrimitiveSort.Integer));
           break;
         }
