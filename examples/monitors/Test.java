@@ -1,7 +1,14 @@
 public class Test {
 
-  //@ requires \Ot >= 2;
+  //@ requires \Wt == 0;
   public void main() {
+    //@ charge_ob this;
+    discharge();
+  }
+
+  //@ requires \Ot >= 1;
+  //@ requires \Wt == 0;
+  public void discharge() {
     //@ discharge_ob this;
   }
 }

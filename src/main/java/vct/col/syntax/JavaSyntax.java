@@ -87,7 +87,7 @@ public class JavaSyntax extends Syntax {
         syntax.addFunction(ValidMatrix,"\\matrix");
         syntax.addFunction(ValidPointer,"\\pointer");
         syntax.addFunction(ValidPointerIndex, "\\pointer_index");
-        syntax.addFunction(Obligations, "\\obs");
+        syntax.addOperator(Obligations, -1, "\\obs", "{", "}");
         syntax.addFunction(LockOf, "\\lock");
         syntax.addFunction(CondVarOf, "\\cond");
         syntax.addReserved(Wt, "\\Wt");

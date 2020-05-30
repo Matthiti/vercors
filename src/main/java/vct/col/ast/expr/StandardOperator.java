@@ -328,7 +328,7 @@ public enum StandardOperator {
   /**
    * Define the obligations
    */
-  Obligations(1),
+  Obligations(-1),
   /**
    * Access the intrinsic lock of an object
    */

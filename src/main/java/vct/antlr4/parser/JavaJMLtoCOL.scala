@@ -914,8 +914,8 @@ case class JavaJMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: Jav
       create expression(MatrixCompare, expr(a), expr(b))
     case ValPrimary27("\\mrep", "(", m, ")") =>
       create expression(MatrixRepeat, expr(m))
-    case ValPrimary28("\\obs", "(", o, ")") =>
-      create expression(Obligations, expr(o))
+    case ValPrimary28("\\obs", "(", "{", o, "}", ")") =>
+      create expression(Obligations, o.map(convertValExpList).getOrElse(Seq()):_*)
     case ValPrimary29("\\lock", "(", o, ")") =>
       create expression(LockOf, expr(o))
     case ValPrimary30("\\cond", "(", o, ")") =>

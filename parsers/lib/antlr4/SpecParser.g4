@@ -123,7 +123,7 @@ valPrimary
     | '\\msum' '(' langExpr ',' langExpr ')'
     | '\\mcmp' '(' langExpr ',' langExpr ')'
     | '\\mrep' '(' langExpr ')'
-    | '\\obs' '(' langExpr ')'
+    | '\\obs' '(' '{' valExpressionList? '}' ')'
     | '\\lock' '(' langExpr ')'
     | '\\cond' '(' langExpr ')'
     | 'Reducible' '(' langExpr ',' valReducibleOperator ')'

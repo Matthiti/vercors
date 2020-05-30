@@ -1486,7 +1486,12 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
         e.setType(elementType);
         break;
       case Obligations:
-        // TODO: check if correct
+        // TODO: give \lock and \cond its own types?
+        for (int i = 0; i < e.argslength(); i++) {
+          if (!e.operator().equals(StandardOperator.LockOf) && !e.operator().equals(StandardOperator.CondVarOf)) {
+            Fail("the type of an obligation should be a lock or condition variable");
+          }
+        }
         e.setType(new PrimitiveType(PrimitiveSort.Boolean));
         break;
       case CondVarOf:
