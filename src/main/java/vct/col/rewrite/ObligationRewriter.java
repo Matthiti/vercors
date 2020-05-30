@@ -1,10 +1,7 @@
 package vct.col.rewrite;
 
 import hre.ast.MessageOrigin;
-import vct.col.ast.expr.Dereference;
-import vct.col.ast.expr.NameExpression;
-import vct.col.ast.expr.OperatorExpression;
-import vct.col.ast.expr.StandardOperator;
+import vct.col.ast.expr.*;
 import vct.col.ast.generic.ASTNode;
 import vct.col.ast.stmt.decl.*;
 import vct.col.ast.type.ASTReserved;
@@ -14,8 +11,11 @@ import vct.col.ast.util.ContractBuilder;
 public class ObligationRewriter extends AbstractRewriter {
 
   private static final String OBLIGATION_VARIABLE = "obsVars";
+  private static final String OBLIGATIONS_PER_THREAD = "obs";
 
+  private ASTClass obligationVariablesClass;
   private ASTClass obligationClass;
+  private ASTClass obligationListClass;
 
   public ObligationRewriter(ProgramUnit source) {
     super(source);
@@ -165,6 +165,20 @@ public class ObligationRewriter extends AbstractRewriter {
   }
 
   @Override
+  public void visit(OperatorExpression e) {
+    switch (e.operator()) {
+      case Obligations:
+        break;
+      case CondVarOf:
+        break;
+      case LockOf:
+        break;
+      default:
+        super.visit(e);
+    }
+  }
+
+  @Override
   public void visit(NameExpression e) {
     if (e.isReserved(ASTReserved.Wt)) {
       result = Wt();
@@ -177,10 +191,22 @@ public class ObligationRewriter extends AbstractRewriter {
 
   @Override
   public void visit(Method m) {
-    // Don't add pre- and postconditions to fake and static methods
-    // TODO: only check if Constructor, or only allow Method.Kind.Plain?
-    if (m.getOrigin() instanceof MessageOrigin || m.isStatic() || m.getKind().equals(Method.Kind.Constructor)) {
+    // Don't add args, pre- and postconditions to fake methods and static methods
+    if (m.getOrigin() instanceof MessageOrigin || m.isStatic()) {
       super.visit(m);
+      return;
+    }
+
+    DeclarationStatement[] args = new DeclarationStatement[m.getArity() + 1];
+    args[0] = create.field_decl(OBLIGATIONS_PER_THREAD, create.class_type(obligationListClass.getName()));
+    for (int i = 1; i <= m.getArity(); i++) {
+      args[i] = rewrite(m.getArgs()[i - 1]);
+    }
+
+    // Don't add pre- and postconditions to constructors
+    // TODO: only check if Constructor, or only allow Method.Kind.Plain?
+    if (m.getKind().equals(Method.Kind.Constructor)) {
+      result = create.method_kind(m.getKind(), m.getReturnType(), rewrite(m.getContract()), m.getName(), args, rewrite(m.getBody()));
       return;
     }
 
@@ -274,7 +300,27 @@ public class ObligationRewriter extends AbstractRewriter {
     );
 
     rewrite(m.getContract(), cb);
-    result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), rewrite(m.getArgs()), rewrite(m.getBody()));
+    result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), args, rewrite(m.getBody()));
+  }
+
+  @Override
+  public void visit(MethodInvokation s) {
+    Method m = s.getDefinition();
+    if (m == null) {
+      super.visit(s);
+      return;
+    }
+
+    MethodInvokation res = create.invokation(
+        m.getKind() == Method.Kind.Constructor ? rewrite(s.dispatch) : rewrite(s.object),
+        rewrite(s.dispatch),
+        s.method,
+        rewrite(create.local_name(OBLIGATIONS_PER_THREAD), s.getArgs())
+    );
+
+    res.set_before(rewrite(s.get_before()));
+    res.set_after(rewrite(s.get_after()));
+    result = res;
   }
 
   @Override
@@ -285,10 +331,10 @@ public class ObligationRewriter extends AbstractRewriter {
       return;
     }
 
-    ASTNode newObsVars = create.expression(StandardOperator.New, create.class_type(obligationClass.name()));
+    ASTNode newObsVars = create.expression(StandardOperator.New, create.class_type(obligationVariablesClass.name()));
     c.add(create.field_decl(
         OBLIGATION_VARIABLE,
-        create.class_type(obligationClass.name()),
+        create.class_type(obligationVariablesClass.name()),
         newObsVars
     ));
     super.visit(c);
@@ -297,14 +343,18 @@ public class ObligationRewriter extends AbstractRewriter {
   @Override
   public ProgramUnit rewriteAll() {
     create.setOrigin(new MessageOrigin("Generated code: Obligation variables"));
-    obligationClass = create.ast_class("ObligationVariables", ASTClass.ClassKind.Plain, null, null, null);
+    obligationVariablesClass = create.ast_class("ObligationVariables", ASTClass.ClassKind.Plain, null, null, null);
+    createObligationClass();
+    createObligationListClass();
     ProgramUnit res = super.rewriteOrdered();
 
     for (DeclarationStatement var : variables()) {
-      obligationClass.add(var);
+      obligationVariablesClass.add(var);
     }
 
+    res.add(obligationVariablesClass);
     res.add(obligationClass);
+    res.add(obligationListClass);
     return res;
   }
 
@@ -313,5 +363,65 @@ public class ObligationRewriter extends AbstractRewriter {
         create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer), create.constant(0)),
         create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer), create.constant(0))
     };
+  }
+
+  private void createObligationClass() {
+    obligationClass = create.ast_class("Obligation", ASTClass.ClassKind.Plain, null, null, null);
+    obligationClass.add(
+        create.field_decl("object", create.class_type("java_DOT_lang_DOT_Object"))
+    );
+    obligationClass.add(
+        create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean))
+    );
+    obligationClass.add(
+        create.field_decl("waitLevel", create.primitive_type(PrimitiveSort.Integer))
+    );
+
+    obligationClass.add(
+        create.method_kind(
+            Method.Kind.Constructor,
+            create.primitive_type(PrimitiveSort.Void),
+            null,
+            obligationClass.getName(),
+            new DeclarationStatement[] {
+                create.field_decl("object", create.class_type("java_DOT_lang_DOT_Object")),
+                create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean)),
+                create.field_decl("waitLevel", create.primitive_type(PrimitiveSort.Integer))
+            },
+            create.block(
+                create.assignment(
+                    create.dereference(
+                        create.reserved_name(ASTReserved.This),
+                        "object"
+                    ),
+                    create.local_name("object")
+                ),
+                create.assignment(
+                    create.dereference(
+                        create.reserved_name(ASTReserved.This),
+                        "isLock"
+                    ),
+                    create.local_name("isLock")
+                ),
+                create.assignment(
+                    create.dereference(
+                        create.reserved_name(ASTReserved.This),
+                        "waitLevel"
+                    ),
+                    create.local_name("waitLevel")
+                )
+            )
+        )
+    );
+  }
+
+  private void createObligationListClass() {
+    obligationListClass = create.ast_class("ObligationList", ASTClass.ClassKind.Plain, null, null, null);
+    obligationListClass.add(
+        create.field_decl("current", create.class_type(obligationClass.getName()))
+    );
+    obligationListClass.add(
+        create.field_decl("next", create.class_type(obligationListClass.getName()))
+    );
   }
 }

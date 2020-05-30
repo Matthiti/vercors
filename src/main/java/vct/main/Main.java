@@ -392,6 +392,10 @@ public class Main
           passes.add("java-encode"); // disambiguate overloaded stuff, copy inherited functions and specifications
           passes.add("standardize");
           passes.add("check");
+
+          passes.add("check-obligations");
+          passes.add("standardize");
+          passes.add("check");
         }
 
         if (sat_check.get()) {
@@ -507,10 +511,6 @@ public class Main
 
         if (silver.used()) {
           passes.add("current_thread"); // add argument 'current thread' to all methods
-          passes.add("standardize");
-          passes.add("check");
-
-          passes.add("check-obligations");
           passes.add("standardize");
           passes.add("check");
         }
