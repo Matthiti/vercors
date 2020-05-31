@@ -12,8 +12,8 @@ public class Barrier {
   /*@
     context Perm(n, write);
     requires n > 0;
-    requires \Ot > 0;
-    requires n <= \Ot;
+    requires \Ot(this) > 0;
+    requires n <= \Ot(this);
    */
   public synchronized void waitForBarrier() {
     n--;
@@ -47,6 +47,7 @@ class BarrierThread {
   }
 
   //@ requires Perm(barrier, write);
+  //@ requires \Ot(barrier) > 0;
   //@ ensures Perm(barrier, write);
   public void run() {
     for (int i = 0; i < 10; i++) {

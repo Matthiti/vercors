@@ -171,19 +171,14 @@ public class ObligationRewriter extends AbstractRewriter {
         break;
       case LockOf:
         break;
+      case Wt:
+        result = Wt(e.first());
+        break;
+      case Ot:
+        result = Ot(e.first());
+        break;
       default:
         super.visit(e);
-    }
-  }
-
-  @Override
-  public void visit(NameExpression e) {
-    if (e.isReserved(ASTReserved.Wt)) {
-      result = Wt();
-    } else if (e.isReserved(ASTReserved.Ot)) {
-      result = Ot();
-    } else {
-      super.visit(e);
     }
   }
 

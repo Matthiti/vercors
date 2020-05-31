@@ -90,8 +90,8 @@ public class JavaSyntax extends Syntax {
         syntax.addOperator(Obligations, -1, "\\obs", "{", "}");
         syntax.addFunction(LockOf, "\\lock");
         syntax.addFunction(CondVarOf, "\\cond");
-        syntax.addReserved(Wt, "\\Wt");
-        syntax.addReserved(Ot, "\\Ot");
+        syntax.addFunction(Wt, "\\Wt");
+        syntax.addFunction(Ot, "\\Ot");
 
         JavaVerCorsSyntax=syntax;
         

@@ -126,6 +126,8 @@ valPrimary
     | '\\obs' '(' '{' valExpressionList? '}' ')'
     | '\\lock' '(' langExpr ')'
     | '\\cond' '(' langExpr ')'
+    | '\\Wt' '(' langExpr ')'
+    | '\\Ot' '(' langExpr ')'
     | 'Reducible' '(' langExpr ',' valReducibleOperator ')'
     | langId ':' langExpr
     ;
@@ -150,8 +152,6 @@ valReserved
  | 'read' // Any read permission
  | 'None' // The empty value of the option langType
  | 'empty' // The empty process in the context of Models
- | '\\Wt'
- | '\\Ot'
  ;
 
 valType

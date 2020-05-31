@@ -103,14 +103,6 @@ public enum ASTReserved {
   /**
    * The default case in a switch.
    */
-  Default,
-  /**
-   * Wt
-   */
-  Wt,
-  /**
-   * Ot
-   */
-  Ot
+  Default
 }
 

@@ -336,7 +336,15 @@ public enum StandardOperator {
   /**
    * Access the condition variable of an object
    */
-  CondVarOf(1)
+  CondVarOf(1),
+  /**
+   * Wt of a monitor
+   */
+  Wt(1),
+  /**
+   * Ot of a monitor
+   */
+  Ot(1)
   ;
 
   private final int arity;

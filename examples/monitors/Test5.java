@@ -16,8 +16,8 @@ public class Barrier {
   /*@
     context Perm(n, write);
     requires n > 0;
-    requires \Ot > 0;
-    requires n <= \Ot;
+    requires \Ot(this) > 0;
+    requires n <= \Ot(this);
    */
   public synchronized void waitForBarrier() {
     n--;

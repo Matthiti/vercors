@@ -1082,7 +1082,11 @@ class CMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: CParser)
       create expression(LockOf, expr(o))
     case ValPrimary30("\\cond", "(", o, ")") =>
       create expression(CondVarOf, expr(o))
-    case ValPrimary31("Reducible", "(", exp, _, opNode, ")") =>
+    case ValPrimary31("\\Wt", "(", o, ")") =>
+      create expression(Wt, expr(o))
+    case ValPrimary32("\\Ot", "(", o, ")") =>
+      create expression(Ot, expr(o))
+    case ValPrimary33("Reducible", "(", exp, _, opNode, ")") =>
       val opText = opNode match {
         case ValReducibleOperator0("+") => "+"
         case ValReducibleOperator1(id) => convertID(id)
@@ -1092,7 +1096,7 @@ class CMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: CParser)
         case "min" => ReducibleMin
         case "max" => ReducibleMax
       }, expr(exp))
-    case ValPrimary32(label, _, exp) =>
+    case ValPrimary34(label, _, exp) =>
       val res = expr(exp)
       res.addLabel(create label(convertID(label)))
       res
@@ -1128,10 +1132,6 @@ class CMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: CParser)
       create reserved_name ASTReserved.OptionNone
     case ValReserved7("empty") =>
       create reserved_name ASTReserved.EmptyProcess
-    case ValReserved8("\\Wt") =>
-      create reserved_name ASTReserved.Wt
-    case ValReserved9("\\Ot") =>
-      create reserved_name ASTReserved.Ot
   })
 
   /**
