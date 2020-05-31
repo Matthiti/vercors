@@ -1,3 +1,6 @@
+/**
+ * This program should be verified successfully.
+ */
 public class Test {
 
   //@ requires \Wt == 0;

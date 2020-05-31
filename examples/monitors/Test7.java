@@ -30,20 +30,10 @@ public class Barrier {
 class Main {
 
   public void main() {
-    int n = 3;
+    int n = 1;
     Barrier barrier = new Barrier(n);
     //@ charge_ob barrier;
-    //@ charge_ob barrier;
-    //@ charge_ob barrier;
-    BarrierThread[] threads = new BarrierThread[n];
-    for (int i = 0; i < n; i++) {
-      threads[i] = new BarrierThread(barrier);
-      threads[i].start();
-    }
-
-    for (int j = 0; j < n; j++) {
-      threads[j].join();
-    }
+    BarrierThread t = new BarrierThread(barrier);
   }
 }
 
@@ -51,10 +41,13 @@ class BarrierThread {
 
   private final Barrier barrier;
 
+  //@ ensures Perm(this.barrier, write);
   public BarrierThread(Barrier barrier) {
     this.barrier = barrier;
   }
 
+  //@ requires Perm(barrier, write);
+  //@ ensures Perm(barrier, write);
   public void run() {
     for (int i = 0; i < 10; i++) {
       // Do stuff
@@ -65,6 +58,8 @@ class BarrierThread {
     }
   }
 
+  //@ requires Perm(barrier, write);
+  //@ ensures Perm(barrier, write);
   public void start() {
     run();
   }
