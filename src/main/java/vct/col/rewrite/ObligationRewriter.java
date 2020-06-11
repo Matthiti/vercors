@@ -57,6 +57,12 @@ public class ObligationRewriter extends AbstractRewriter {
             // TODO: add also to obs
         );
         break;
+      case ChargeObs:
+        result = create.block(
+            addToOt(s.getArg(0), s.getArg(1))
+            // TODO: add also to obs
+        );
+        break;
       case DischargeOb:
         result = create.block(
             // TODO: add assertion that it is in obs
@@ -72,6 +78,24 @@ public class ObligationRewriter extends AbstractRewriter {
                 )
             ),
             decrementOt(s.getArg(0))
+            // TODO: remove also from obs
+        );
+        break;
+      case DischargeObs:
+        result = create.block(
+            // TODO: add assertion that is is in obs
+            create.special(
+                ASTSpecial.Kind.Assert,
+                enoughObs(
+                    Wt(s.getArg(0)),
+                    create.expression(
+                        StandardOperator.Minus,
+                        Ot(s.getArg(0)),
+                        s.getArg(1)
+                    )
+                )
+            ),
+            removeFromOt(s.getArg(0), s.getArg(1))
             // TODO: remove also from obs
         );
         break;
@@ -119,45 +143,61 @@ public class ObligationRewriter extends AbstractRewriter {
   }
 
   private ASTNode incrementWt(ASTNode v) {
+    return addToWt(v, create.constant(1));
+  }
+
+  private ASTNode addToWt(ASTNode v, ASTNode n) {
     return create.assignment(
         Wt(v),
         create.expression(
             StandardOperator.Plus,
             Wt(v),
-            create.constant(1)
+            n
         )
     );
   }
 
   private ASTNode decrementWt(ASTNode v) {
+    return removeFromWt(v, create.constant(1));
+  }
+
+  private ASTNode removeFromWt(ASTNode v, ASTNode n) {
     return create.assignment(
         Wt(v),
         create.expression(
             StandardOperator.Minus,
             Wt(v),
-            create.constant(1)
+            n
         )
     );
   }
 
   private ASTNode incrementOt(ASTNode v) {
+    return addToOt(v, create.constant(1));
+  }
+
+  private ASTNode addToOt(ASTNode v, ASTNode n) {
     return create.assignment(
         Ot(v),
         create.expression(
             StandardOperator.Plus,
             Ot(v),
-            create.constant(1)
+            n
         )
     );
   }
 
   private ASTNode decrementOt(ASTNode v) {
+    return removeFromOt(v, create.constant(1));
+  }
+
+  private ASTNode removeFromOt(ASTNode v, ASTNode n) {
     return create.assignment(
         Ot(v),
         create.expression(
             StandardOperator.Minus,
             Ot(v),
-            create.constant(1)
+            n
         )
     );
   }

@@ -76,9 +76,9 @@ valStatement
  | 'action' langExpr ',' langExpr ',' langExpr ',' langExpr valActionMap* ';'
  | 'atomic' '(' valExpressionList? ')' langStatement
  | 'charge_ob' langExpr ';'
+ | 'charge_obs' langExpr ',' langExpr ';'
  | 'discharge_ob' langExpr ';'
-// | 'charge_ob' '(' langExpr (',' langExpr)? ')' ';'
-// | 'discharge_ob' '(' langExpr (',' langExpr)? ')' ';'
+ | 'discharge_obs' langExpr ',' langExpr ';'
  ;
 
 valActionMap: ',' langExpr ',' langExpr;

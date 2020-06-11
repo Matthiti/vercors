@@ -1945,8 +1945,22 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
       if (!(t instanceof ClassType)) {
         Fail("Argument of %s must be a class type at %s", s.kind, s.getOrigin());
       }
-
       break;
+    }
+    case ChargeObs:
+    case DischargeObs:
+    {
+      Type t = s.args[0].getType();
+      if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!(t instanceof ClassType)) {
+        Fail("Argument of %s must be a class type at %s", s.kind, s.getOrigin());
+      }
+
+      Type t2 = s.args[1].getType();
+      if (t2 == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!t2.isPrimitive(PrimitiveSort.Integer)) {
+        Fail("Argument of %s must be an integer at %s", s.kind, s.getOrigin());
+      }
     }
     }
     s.setType(new PrimitiveType(PrimitiveSort.Void));

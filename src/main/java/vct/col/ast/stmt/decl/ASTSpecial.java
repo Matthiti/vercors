@@ -128,9 +128,17 @@ public class ASTSpecial extends ASTDeclaration {
      */
     ChargeOb(1),
     /**
+     * Charges multiple obligations
+     */
+    ChargeObs(2),
+    /**
      * Discharges an obligation
      */
-    DischargeOb(1)
+    DischargeOb(1),
+    /**
+     * Discharges multiple obligations
+     */
+    DischargeObs(2)
     ;
 
     
