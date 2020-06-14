@@ -1483,29 +1483,29 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
       case LockOf: {
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
-        if (!(t instanceof ClassType)) Fail("type should be a class type, got %s", t);
-        e.setType(new ObligationType(ObligationSort.Lock));
+        if (!(t instanceof ClassType)) Fail("type must be a class type, got %s", t);
+        e.setType(new PrimitiveType(PrimitiveSort.Obligation));
         break;
       }
       case CondVarOf: {
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
-        if (!(t instanceof ClassType)) Fail("type should be a class type, got %s", t);
-        e.setType(new ObligationType(ObligationSort.CondVar));
+        if (!(t instanceof ClassType)) Fail("type must be a class type, got %s", t);
+        e.setType(new PrimitiveType(PrimitiveSort.Obligation));
         break;
       }
       case Wt:
       case Ot: {
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
-        if (!(t instanceof ClassType)) Fail("type should be a class type, got %s", t);
+        if (!(t instanceof ClassType)) Fail("type must be a class type, got %s", t);
         e.setType(new PrimitiveType(PrimitiveSort.Integer));
         break;
       }
       case WaitLevel: {
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of first argument is unknown at %s", e.getOrigin());
-        if (!(t instanceof ObligationType)) Fail("type should be an obligation an type, got %s", t);
+        if (!t.isObligation()) Fail("type should be an obligation type, got %s", t);
         e.setType(new PrimitiveType(PrimitiveSort.Integer));
         break;
       }
@@ -1975,11 +1975,11 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
     {
       Type t = s.args[0].getType();
       if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
-      if (!(t instanceof ObligationType)) Fail("type should be an obligation an type, got %s", t);
+      if (!t.isObligation()) Fail("type must be an obligation type, got %s", t);
 
       Type t2 = s.args[1].getType();
       if (t2 == null) Fail("type of second argument is unknown at %s", s.getOrigin());
-      if (!t2.isInteger()) Fail("the second argument should be an integer at %s", s.getOrigin());
+      if (!t2.isInteger()) Fail("the second argument must be an integer at %s", s.getOrigin());
       break;
     }
     }

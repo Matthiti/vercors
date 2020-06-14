@@ -445,10 +445,6 @@ public class RecursiveVisitor<T> extends ASTFrame<T> implements ASTVisitor<T> {
   }
 
   @Override
-  public void visit(ObligationType t) {
-  }
-
-  @Override
   public void visit(FieldAccess a) {
     dispatch(a.object());
     dispatch(a.value());

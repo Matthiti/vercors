@@ -429,12 +429,6 @@ class MatchLinear implements ASTMapping1<Boolean,ASTNode> {
   public Boolean map(OMPForSimd loop, ASTNode arg) {
     return null;
   }
-
-  @Override
-  public Boolean map(ObligationType t, ASTNode a) {
-    return null;
-  }
-
 }
 
 class MatchSubstitution extends AbstractRewriter {

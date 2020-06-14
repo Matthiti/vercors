@@ -6,8 +6,6 @@ import vct.col.ast.generic.ASTNode;
 import vct.col.ast.stmt.composite.BlockStatement;
 import vct.col.ast.stmt.decl.*;
 import vct.col.ast.type.ASTReserved;
-import vct.col.ast.type.ObligationSort;
-import vct.col.ast.type.ObligationType;
 import vct.col.ast.type.PrimitiveSort;
 import vct.col.ast.util.ContractBuilder;
 
@@ -105,7 +103,7 @@ public class ObligationRewriter extends AbstractRewriter {
         break;
       case SetWaitLevel:
         result = create.assignment(
-            waitLevel(s.getArg(0)),
+            waitLevel((OperatorExpression) s.getArg(0)),
             s.getArg(1)
         );
         break;
@@ -216,13 +214,15 @@ public class ObligationRewriter extends AbstractRewriter {
     );
   }
 
-  private ASTNode waitLevel(ASTNode object) {
-    OperatorExpression expr = (OperatorExpression) object;
-    ObligationSort sort = ((ObligationType) expr.getType()).sort();
-    if (sort == ObligationSort.Lock) {
-      return waitLevelLock(expr.first());
-    } else {
-      return waitLevelCond(expr.first());
+  private ASTNode waitLevel(OperatorExpression expr) {
+    switch (expr.operator()) {
+      case LockOf:
+        return waitLevelLock(expr.first());
+      case CondVarOf:
+        return waitLevelCond(expr.first());
+      default:
+        return null;
+        // TODO: throw error. This state should never be reached.
     }
   }
 
@@ -266,7 +266,7 @@ public class ObligationRewriter extends AbstractRewriter {
         result = Ot(e.first());
         break;
       case WaitLevel:
-        result = waitLevel(e.first());
+        result = waitLevel((OperatorExpression) e.first());
         break;
       default:
         super.visit(e);
@@ -280,7 +280,7 @@ public class ObligationRewriter extends AbstractRewriter {
         OBLIGATIONS_PER_THREAD,
         create.primitive_type(
             PrimitiveSort.Array,
-            create.primitive_type(PrimitiveSort.Cell, create.class_type(obligationClass.getName()))
+            create.class_type("java_DOT_lang_DOT_Object")
         )
     );
 
@@ -453,23 +453,15 @@ public class ObligationRewriter extends AbstractRewriter {
               create.constant(0)
           )
       );
-
-      cb.requires(obsPerm);
-      cb.requires(waitLevelPerm);
-      cb.requires(waitLevelsCheck);
-
-      cb.ensures(obsPerm);
-      cb.ensures(waitLevelPerm);
-      cb.ensures(waitLevelsCheck);
-    } else {
-      cb.requires(obsPerm);
-      cb.requires(waitLevelPerm);
-      cb.requires(waitLevelsCheck);
-
-      cb.ensures(obsPerm);
-      cb.ensures(waitLevelPerm);
-      cb.ensures(waitLevelsCheck);
     }
+
+//    cb.requires(obsPerm);
+//    cb.requires(waitLevelPerm);
+//    cb.requires(waitLevelsCheck);
+//
+//    cb.ensures(obsPerm);
+//    cb.ensures(waitLevelPerm);
+//    cb.ensures(waitLevelsCheck);
 
     rewrite(m.getContract(), cb);
     result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), args, rewrite(m.getBody()));

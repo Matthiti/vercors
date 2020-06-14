@@ -300,10 +300,4 @@ public class UndefinedMapping<T> implements ASTMapping<T> {
   public T map(OMPForSimd loop) {
     return null;
   }
-
-  @Override
-  public T map(ObligationType t) {
-    return null;
-  }
-
 }

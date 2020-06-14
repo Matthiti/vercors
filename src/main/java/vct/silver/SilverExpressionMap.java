@@ -568,10 +568,4 @@ public class SilverExpressionMap<T,E> implements ASTMapping<E> {
   public E map(OMPForSimd loop) {
     return null;
   }
-
-  @Override
-  public E map(ObligationType t) {
-    return null;
-  }
-
 }

@@ -85,6 +85,9 @@ public final class PrimitiveType extends Type {
   public boolean isVoid() {
     return sort==PrimitiveSort.Void;
   }
+  public boolean isObligation() {
+    return sort == PrimitiveSort.Obligation;
+  }
 
 
   @Override

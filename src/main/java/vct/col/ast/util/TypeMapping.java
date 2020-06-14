@@ -25,6 +25,4 @@ public interface TypeMapping<R> {
   public R map(TypeVariable v);
 
   public R map(CFunctionType t);
-
-  public R map(ObligationType t);
 }

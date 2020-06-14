@@ -142,9 +142,4 @@ public class SilverTypeMap<T> implements TypeMapping<T> {
   public T map(CFunctionType t) {
     throw new HREError("c function types are not supported");
   }
-
-  @Override
-  public T map(ObligationType t) {
-    throw new HREError("obligations types are not supported");
-  }
 }

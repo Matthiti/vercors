@@ -46,6 +46,7 @@ public class VerCorsSyntax {
     syntax.addPrimitiveType(PrimitiveSort.Resource,"resource");
     syntax.addPrimitiveType(PrimitiveSort.Class,"classtype");
     syntax.addPrimitiveType(PrimitiveSort.Location,"loc");
+    syntax.addPrimitiveType(PrimitiveSort.Obligation, "obligation");
     
     syntax.addReserved(Result,"\\result");
     syntax.addReserved(Pure,"pure");
