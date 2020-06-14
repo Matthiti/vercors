@@ -224,13 +224,6 @@ public class ObligationRewriter extends AbstractRewriter {
 
   @Override
   public void visit(Method m) {
-    // Don't add args, pre- and postconditions to fake methods and static methods
-    // TODO: fix for static methods
-    if (m.getOrigin() instanceof MessageOrigin || m.isStatic()) {
-      super.visit(m);
-      return;
-    }
-
     DeclarationStatement[] args = new DeclarationStatement[m.getArity() + 1];
     args[0] = create.field_decl(
         OBLIGATIONS_PER_THREAD,
@@ -243,13 +236,6 @@ public class ObligationRewriter extends AbstractRewriter {
     for (int i = 1; i <= m.getArity(); i++) {
       args[i] = rewrite(m.getArgs()[i - 1]);
     }
-
-    // Don't add pre- and postconditions to constructors
-    // TODO: only check if Constructor, or only allow Method.Kind.Plain?
-//    if (m.getKind().equals(Method.Kind.Constructor)) {
-//      result = create.method_kind(m.getKind(), m.getReturnType(), rewrite(m.getContract()), m.getName(), args, rewrite(m.getBody()));
-//      return;
-//    }
 
     ASTNode obsPerm = create.starall(
         create.expression(
@@ -409,81 +395,9 @@ public class ObligationRewriter extends AbstractRewriter {
       cb.ensures(waitLevelPerm);
       cb.ensures(waitLevelsCheck);
     } else {
-      cb.requires(
-          create.expression(
-              StandardOperator.Perm,
-              Wt(),
-              create.reserved_name(ASTReserved.FullPerm)
-          )
-      );
-
-      cb.requires(
-          create.expression(
-              StandardOperator.Perm,
-              Ot(),
-              create.reserved_name(ASTReserved.FullPerm)
-          )
-      );
-
-      cb.requires(
-          create.expression(
-              StandardOperator.GTE,
-              Wt(),
-              create.constant(0)
-          )
-      );
-
-      cb.requires(
-          create.expression(
-              StandardOperator.GTE,
-              Ot(),
-              create.constant(0)
-          )
-      );
-
-      cb.requires(
-          enoughObs(Wt(), Ot())
-      );
-
       cb.requires(obsPerm);
       cb.requires(waitLevelPerm);
       cb.requires(waitLevelsCheck);
-
-      cb.ensures(
-          create.expression(
-              StandardOperator.Perm,
-              Wt(),
-              create.reserved_name(ASTReserved.FullPerm)
-          )
-      );
-
-      cb.ensures(
-          create.expression(
-              StandardOperator.Perm,
-              Ot(),
-              create.reserved_name(ASTReserved.FullPerm)
-          )
-      );
-
-      cb.ensures(
-          create.expression(
-              StandardOperator.GTE,
-              Wt(),
-              create.constant(0)
-          )
-      );
-
-      cb.ensures(
-          create.expression(
-              StandardOperator.GTE,
-              Ot(),
-              create.constant(0)
-          )
-      );
-
-      cb.ensures(
-          enoughObs(Wt(), Ot())
-      );
 
       cb.ensures(obsPerm);
       cb.ensures(waitLevelPerm);
@@ -516,13 +430,13 @@ public class ObligationRewriter extends AbstractRewriter {
 
   @Override
   public void visit(ASTClass c) {
-    // Check if this is a generated class. If so, don't inject the obligation variables.
-    if (c.getOrigin() instanceof MessageOrigin) {
+    // Ignore all non-standard generated classes
+    // TODO: more specific prefix?
+    if (c.getOrigin() instanceof MessageOrigin && !c.getName().startsWith("java")) {
       super.visit(c);
       return;
     }
-
-    // Add Wt and Ot to each (non-generated) class
+    // Add Wt and Ot to each class
     c.add(create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer)));
     c.add(create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer)));
 

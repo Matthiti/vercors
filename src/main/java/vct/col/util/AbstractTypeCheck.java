@@ -1600,6 +1600,8 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
     && !((arg instanceof NameExpression) && (((NameExpression)arg).getKind()==Kind.Field))
     && !arg.getType().isPrimitive(PrimitiveSort.Location)
     && !arg.isa(StandardOperator.IndependentOf) // Ignore this check in jspec rules
+    && !arg.isa(StandardOperator.Wt)
+    && !arg.isa(StandardOperator.Ot)
     ){
       Fail("%s is not a heap location",what);
     }
