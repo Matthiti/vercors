@@ -84,6 +84,7 @@ VAL_CHARGE_OB: 'charge_ob';
 VAL_CHARGE_OBS: 'charge_obs';
 VAL_DISCHARGE_OB: 'discharge_ob';
 VAL_DISCHARGE_OBS: 'discharge_obs';
+VAL_SET_WAIT_LEVEL: 'set_wait_level';
 
 UNFOLDING: '\\unfolding';
 IN: '\\in';
@@ -109,11 +110,11 @@ MSUM: '\\msum';
 MCMP: '\\mcmp';
 MREP: '\\mrep';
 RESULT: '\\result';
-OBS: '\\obs';
 LOCK: '\\lock';
 COND: '\\cond';
 WT: '\\Wt';
 OT: '\\Ot';
+WAIT_LEVEL: '\\wait_level';
 
 NONE: 'none';
 OPTION_NONE: 'None';

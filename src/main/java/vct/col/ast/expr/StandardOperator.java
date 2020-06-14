@@ -326,10 +326,6 @@ public enum StandardOperator {
    */
   MatrixCompare(2),
   /**
-   * Define the obligations
-   */
-  Obligations(-1),
-  /**
    * Access the intrinsic lock of an object
    */
   LockOf(1),
@@ -344,7 +340,11 @@ public enum StandardOperator {
   /**
    * Ot of a monitor
    */
-  Ot(1)
+  Ot(1),
+  /**
+   * The wait level of a lock / condition variable
+   */
+  WaitLevel(1)
   ;
 
   private final int arity;

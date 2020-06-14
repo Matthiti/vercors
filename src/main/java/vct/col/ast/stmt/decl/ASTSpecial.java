@@ -138,7 +138,11 @@ public class ASTSpecial extends ASTDeclaration {
     /**
      * Discharges multiple obligations
      */
-    DischargeObs(2)
+    DischargeObs(2),
+    /**
+     * Sets the wait level of a lock / condition variable
+     */
+    SetWaitLevel(2)
     ;
 
     

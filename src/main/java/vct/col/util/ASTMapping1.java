@@ -116,4 +116,6 @@ public interface ASTMapping1<R,A1> {
   public R map(OMPFor loop, A1 arg);
   public R map(OMPParallelFor loop, A1 arg);
   public R map(OMPForSimd loop, A1 arg);
+
+  public R map(ObligationType t, A1 a);
 }

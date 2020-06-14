@@ -343,4 +343,9 @@ public class EmptyVisitor<T> implements ASTVisitor<T> {
   public void visit(OMPForSimd loop) {
 
   }
+
+  @Override
+  public void visit(ObligationType t) {
+
+  }
 }

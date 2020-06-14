@@ -1480,30 +1480,35 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
 
         e.setType(elementType);
         break;
-      case Obligations:
-        // TODO: give \lock and \cond its own types?
-        for (int i = 0; i < e.argslength(); i++) {
-          if (!e.operator().equals(StandardOperator.LockOf) && !e.operator().equals(StandardOperator.CondVarOf)) {
-            Fail("the type of an obligation should be a lock or condition variable");
-          }
-        }
-        e.setType(new PrimitiveType(PrimitiveSort.Boolean));
-        break;
-      case CondVarOf:
       case LockOf: {
-        // TODO: check if correct
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
-        e.setType(t);
+        if (!(t instanceof ClassType)) Fail("type should be a class type, got %s", t);
+        e.setType(new ObligationType(ObligationSort.Lock));
+        break;
+      }
+      case CondVarOf: {
+        Type t = e.arg(0).getType();
+        if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
+        if (!(t instanceof ClassType)) Fail("type should be a class type, got %s", t);
+        e.setType(new ObligationType(ObligationSort.CondVar));
         break;
       }
       case Wt:
-      case Ot:
+      case Ot: {
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
-        if (!(t instanceof ClassType)) Fail("the type of Ot or Wt should be a class type, got %s", t);
+        if (!(t instanceof ClassType)) Fail("type should be a class type, got %s", t);
         e.setType(new PrimitiveType(PrimitiveSort.Integer));
         break;
+      }
+      case WaitLevel: {
+        Type t = e.arg(0).getType();
+        if (t == null) Fail("type of first argument is unknown at %s", e.getOrigin());
+        if (!(t instanceof ObligationType)) Fail("type should be an obligation an type, got %s", t);
+        e.setType(new PrimitiveType(PrimitiveSort.Integer));
+        break;
+      }
       default:
         Abort("missing case of operator %s", op);
         break;
@@ -1602,6 +1607,7 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
     && !arg.isa(StandardOperator.IndependentOf) // Ignore this check in jspec rules
     && !arg.isa(StandardOperator.Wt)
     && !arg.isa(StandardOperator.Ot)
+    && !arg.isa(StandardOperator.WaitLevel)
     ){
       Fail("%s is not a heap location",what);
     }
@@ -1963,6 +1969,18 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
       if (!t2.isPrimitive(PrimitiveSort.Integer)) {
         Fail("Argument of %s must be an integer at %s", s.kind, s.getOrigin());
       }
+      break;
+    }
+    case SetWaitLevel:
+    {
+      Type t = s.args[0].getType();
+      if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!(t instanceof ObligationType)) Fail("type should be an obligation an type, got %s", t);
+
+      Type t2 = s.args[1].getType();
+      if (t2 == null) Fail("type of second argument is unknown at %s", s.getOrigin());
+      if (!t2.isInteger()) Fail("the second argument should be an integer at %s", s.getOrigin());
+      break;
     }
     }
     s.setType(new PrimitiveType(PrimitiveSort.Void));

@@ -161,9 +161,9 @@ public class PVLSyntax {
 
       syntax.addFunction(ValidArray,"\\array");
       syntax.addFunction(ValidMatrix,"\\matrix");
-      syntax.addFunction(Obligations, "\\obs");
       syntax.addFunction(LockOf, "\\lock");
       syntax.addFunction(CondVarOf, "\\cond");
+      syntax.addFunction(WaitLevel, "\\wait_level");
     }
     return syntax;
   }

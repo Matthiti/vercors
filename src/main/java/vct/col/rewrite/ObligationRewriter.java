@@ -6,6 +6,8 @@ import vct.col.ast.generic.ASTNode;
 import vct.col.ast.stmt.composite.BlockStatement;
 import vct.col.ast.stmt.decl.*;
 import vct.col.ast.type.ASTReserved;
+import vct.col.ast.type.ObligationSort;
+import vct.col.ast.type.ObligationType;
 import vct.col.ast.type.PrimitiveSort;
 import vct.col.ast.util.ContractBuilder;
 
@@ -14,6 +16,8 @@ public class ObligationRewriter extends AbstractRewriter {
   private static final String OBLIGATIONS_PER_THREAD = "obs";
   private static final String WT = "Wt";
   private static final String OT = "Ot";
+  private static final String WAIT_LEVEL_LOCK = "wait_level_lock";
+  private static final String WAIT_LEVEL_COND = "wait_level_cond";
 
   private ASTClass obligationClass;
 
@@ -99,16 +103,24 @@ public class ObligationRewriter extends AbstractRewriter {
             // TODO: remove also from obs
         );
         break;
+      case SetWaitLevel:
+        result = create.assignment(
+            waitLevel(s.getArg(0)),
+            s.getArg(1)
+        );
+        break;
       default:
         super.visit(s);
     }
   }
 
   private ASTNode Wt(ASTNode object) {
-    return object != null ? create.dereference(
-        object,
-        WT
-    ) : create.field_name(WT);
+    return object != null
+        ? create.dereference(
+            object,
+            WT
+        )
+        : create.field_name(WT);
   }
 
   private ASTNode Wt() {
@@ -116,10 +128,12 @@ public class ObligationRewriter extends AbstractRewriter {
   }
 
   private ASTNode Ot(ASTNode object) {
-    return object != null ? create.dereference(
+    return object != null
+        ? create.dereference(
             object,
             OT
-        ) : create.field_name(OT);
+        )
+        : create.field_name(OT);
   }
 
   private ASTNode Ot() {
@@ -202,11 +216,45 @@ public class ObligationRewriter extends AbstractRewriter {
     );
   }
 
+  private ASTNode waitLevel(ASTNode object) {
+    OperatorExpression expr = (OperatorExpression) object;
+    ObligationSort sort = ((ObligationType) expr.getType()).sort();
+    if (sort == ObligationSort.Lock) {
+      return waitLevelLock(expr.first());
+    } else {
+      return waitLevelCond(expr.first());
+    }
+  }
+
+  private ASTNode waitLevelLock() {
+    return waitLevelLock(null);
+  }
+
+  private ASTNode waitLevelLock(ASTNode object) {
+    return object != null
+        ? create.dereference(
+            object,
+            WAIT_LEVEL_LOCK
+        )
+        : create.field_name(WAIT_LEVEL_LOCK);
+  }
+
+  private ASTNode waitLevelCond() {
+    return waitLevelCond(null);
+  }
+
+  private ASTNode waitLevelCond(ASTNode object) {
+    return object != null
+        ? create.dereference(
+          object,
+          WAIT_LEVEL_COND
+        )
+        : create.field_name(WAIT_LEVEL_COND);
+  }
+
   @Override
   public void visit(OperatorExpression e) {
     switch (e.operator()) {
-      case Obligations:
-        break;
       case CondVarOf:
         break;
       case LockOf:
@@ -216,6 +264,9 @@ public class ObligationRewriter extends AbstractRewriter {
         break;
       case Ot:
         result = Ot(e.first());
+        break;
+      case WaitLevel:
+        result = waitLevel(e.first());
         break;
       default:
         super.visit(e);
@@ -373,6 +424,22 @@ public class ObligationRewriter extends AbstractRewriter {
 
       cb.ensures(
           create.expression(
+              StandardOperator.Perm,
+              waitLevelLock(),
+              create.reserved_name(ASTReserved.FullPerm)
+          )
+      );
+
+      cb.ensures(
+          create.expression(
+              StandardOperator.Perm,
+              waitLevelCond(),
+              create.reserved_name(ASTReserved.FullPerm)
+          )
+      );
+
+      cb.ensures(
+          create.expression(
               StandardOperator.EQ,
               Wt(),
               create.constant(0)
@@ -437,8 +504,12 @@ public class ObligationRewriter extends AbstractRewriter {
       return;
     }
     // Add Wt and Ot to each class
-    c.add(create.field_decl("Wt", create.primitive_type(PrimitiveSort.Integer)));
-    c.add(create.field_decl("Ot", create.primitive_type(PrimitiveSort.Integer)));
+    c.add(create.field_decl(WT, create.primitive_type(PrimitiveSort.Integer)));
+    c.add(create.field_decl(OT, create.primitive_type(PrimitiveSort.Integer)));
+
+    // Add the wait levels of the lock and the condition variable to each class
+    c.add(create.field_decl(WAIT_LEVEL_LOCK, create.primitive_type(PrimitiveSort.Integer)));
+    c.add(create.field_decl(WAIT_LEVEL_COND, create.primitive_type(PrimitiveSort.Integer)));
 
     super.visit(c);
   }

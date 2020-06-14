@@ -119,6 +119,7 @@ public interface ASTVisitor<T> {
   public void visit(OMPFor loop);
   public void visit(OMPParallelFor loop);
   public void visit(OMPForSimd loop);
+  public void visit(ObligationType t);
 }
 
 

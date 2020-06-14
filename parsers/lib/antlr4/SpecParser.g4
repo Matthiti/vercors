@@ -79,6 +79,7 @@ valStatement
  | 'charge_obs' langExpr ',' langExpr ';'
  | 'discharge_ob' langExpr ';'
  | 'discharge_obs' langExpr ',' langExpr ';'
+ | 'set_wait_level' langExpr ',' langExpr ';'
  ;
 
 valActionMap: ',' langExpr ',' langExpr;
@@ -123,11 +124,11 @@ valPrimary
     | '\\msum' '(' langExpr ',' langExpr ')'
     | '\\mcmp' '(' langExpr ',' langExpr ')'
     | '\\mrep' '(' langExpr ')'
-    | '\\obs' '(' '{' valExpressionList? '}' ')'
     | '\\lock' '(' langExpr ')'
     | '\\cond' '(' langExpr ')'
     | '\\Wt' '(' langExpr ')'
     | '\\Ot' '(' langExpr ')'
+    | '\\wait_level' '(' langExpr ')'
     | 'Reducible' '(' langExpr ',' valReducibleOperator ')'
     | langId ':' langExpr
     ;

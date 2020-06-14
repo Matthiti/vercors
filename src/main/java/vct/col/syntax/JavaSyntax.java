@@ -87,11 +87,11 @@ public class JavaSyntax extends Syntax {
         syntax.addFunction(ValidMatrix,"\\matrix");
         syntax.addFunction(ValidPointer,"\\pointer");
         syntax.addFunction(ValidPointerIndex, "\\pointer_index");
-        syntax.addOperator(Obligations, -1, "\\obs", "{", "}");
         syntax.addFunction(LockOf, "\\lock");
         syntax.addFunction(CondVarOf, "\\cond");
         syntax.addFunction(Wt, "\\Wt");
         syntax.addFunction(Ot, "\\Ot");
+        syntax.addFunction(WaitLevel, "\\wait_level");
 
         JavaVerCorsSyntax=syntax;
         

@@ -462,4 +462,9 @@ public class SilverStatementMap<T,E,S> implements ASTMapping<S> {
   public S map(OMPForSimd loop) {
     return null;
   }
+
+  @Override
+  public S map(ObligationType t) {
+    return null;
+  }
 }

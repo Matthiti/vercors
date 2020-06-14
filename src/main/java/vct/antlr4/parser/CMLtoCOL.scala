@@ -1005,6 +1005,8 @@ class CMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: CParser)
       create special(ASTSpecial.Kind.DischargeOb, expr(arg))
     case ValStatement34(_discharge_obs, arg0, _, arg1, _) =>
       create special(ASTSpecial.Kind.DischargeObs, expr(arg0), expr(arg1))
+    case ValStatement35(_set_wait_level, arg0, _, arg1, _) =>
+      create special(ASTSpecial.Kind.SetWaitLevel, expr(arg0), expr(arg1))
   })
 
   def valExpr(exp: ValPrimaryContext): ASTNode = origin(exp, exp match {
@@ -1080,16 +1082,16 @@ class CMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: CParser)
       create expression(MatrixCompare, expr(a), expr(b))
     case ValPrimary27("\\mrep", "(", m, ")") =>
       create expression(MatrixRepeat, expr(m))
-    case ValPrimary28("\\obs", "(", "{", o, "}", ")") =>
-      create expression(Obligations, o.map(convertValExpList).getOrElse(Seq()):_*)
-    case ValPrimary29("\\lock", "(", o, ")") =>
+    case ValPrimary28("\\lock", "(", o, ")") =>
       create expression(LockOf, expr(o))
-    case ValPrimary30("\\cond", "(", o, ")") =>
+    case ValPrimary29("\\cond", "(", o, ")") =>
       create expression(CondVarOf, expr(o))
-    case ValPrimary31("\\Wt", "(", o, ")") =>
+    case ValPrimary30("\\Wt", "(", o, ")") =>
       create expression(Wt, expr(o))
-    case ValPrimary32("\\Ot", "(", o, ")") =>
+    case ValPrimary31("\\Ot", "(", o, ")") =>
       create expression(Ot, expr(o))
+    case ValPrimary32("\\wait_level", "(", o, ")") =>
+      create expression(WaitLevel, expr(o))
     case ValPrimary33("Reducible", "(", exp, _, opNode, ")") =>
       val opText = opNode match {
         case ValReducibleOperator0("+") => "+"
