@@ -33,10 +33,6 @@ public class Barrier {
 
 class Main {
 
-  /*@
-    context Perm(\Wt(this), read);
-    context Perm(\Ot(this), read);
-   */
   public void main() {
     Barrier barrier = new Barrier(3);
     //@ charge_obs barrier, 3;
@@ -73,7 +69,7 @@ class BarrierThread {
     requires barrier.n <= \Ot(barrier);
     ensures barrier.n == \old(barrier.n) - 1;
    */
-  public void run() {
+  public void start() {
     for (int i = 0; i < 10; i++) {
       // Do stuff
     }
@@ -81,19 +77,6 @@ class BarrierThread {
     for (int j = 10; j< 20; j++) {
       // Do other stuff
     }
-  }
-
-  /*@
-    context Perm(barrier, read);
-    context Perm(\Ot(barrier), read);
-    context Perm(barrier.n, write);
-    requires barrier.n > 0;
-    requires \Ot(barrier) > 0;
-    requires barrier.n <= \Ot(barrier);
-    ensures barrier.n == \old(barrier.n) - 1;
-   */
-  public void start() {
-    run();
   }
 
   public void join() {
