@@ -300,6 +300,15 @@ public class Method extends ASTDeclaration {
     ASTClass cl=(ASTClass)getParent();
     return cl.isOverloaded(name());
   }
+
+  public boolean isSynchronized() {
+    for (ASTNode n : annotations()) {
+      if (n.isReserved(ASTReserved.Synchronized)) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 

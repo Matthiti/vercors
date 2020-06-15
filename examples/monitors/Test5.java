@@ -1,5 +1,7 @@
 /**
  * This program should be verified successfully.
+ *
+ * Last checked: 15-06-2020
  */
 public class Barrier {
 
@@ -15,6 +17,7 @@ public class Barrier {
 
   /*@
     context Perm(n, write);
+    context Perm(\Ot(this), read);
     requires n > 0;
     requires \Ot(this) > 0;
     requires n <= \Ot(this);

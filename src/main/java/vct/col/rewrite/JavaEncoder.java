@@ -435,12 +435,22 @@ public class JavaEncoder extends AbstractRewriter {
           res.copyMissingFlags(m);
           currentTargetClass.add(res);         
         } else {
-          currentTargetClass.add(create.method_kind(kind, returns, initial_contract, name, args, varArgs, null));
+          Method newM = create.method_kind(kind, returns, initial_contract, name, args, varArgs, null);
+          for (ASTNode ann : m.annotations()) {
+            newM.annotations().add(ann);
+          }
+          currentTargetClass.add(newM);
+
           args=copy_rw.rewrite(args);
           internal_mode=true;
           ASTNode body=rewrite(m.getBody());
           internal_mode=false;
-          currentTargetClass.add(create.method_kind(kind, returns, internal_contract, internal_name, args, varArgs, body));
+
+          newM = create.method_kind(kind, returns, internal_contract, internal_name, args, varArgs, body);
+          for (ASTNode ann : m.annotations()) {
+            newM.annotations().add(ann);
+          }
+          currentTargetClass.add(newM);
         }
         break;
       case Predicate:

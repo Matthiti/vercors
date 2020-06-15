@@ -1,3 +1,6 @@
+/**
+ * Internal test, no idea if it works.
+ */
 class Test {
 
   //@ requires obs != null;

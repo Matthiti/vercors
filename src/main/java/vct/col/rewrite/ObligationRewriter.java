@@ -280,7 +280,10 @@ public class ObligationRewriter extends AbstractRewriter {
         OBLIGATIONS_PER_THREAD,
         create.primitive_type(
             PrimitiveSort.Array,
-            create.class_type("java_DOT_lang_DOT_Object")
+            create.primitive_type(
+                PrimitiveSort.Cell,
+                create.class_type(obligationClass.getName())
+            )
         )
     );
 
@@ -288,109 +291,11 @@ public class ObligationRewriter extends AbstractRewriter {
       args[i] = rewrite(m.getArgs()[i - 1]);
     }
 
-    ASTNode obsPerm = create.starall(
-        create.expression(
-            StandardOperator.And,
-            create.expression(
-                StandardOperator.GTE,
-                create.local_name("i"),
-                create.constant(0)
-            ),
-            create.expression(
-                StandardOperator.LT,
-                create.local_name("i"),
-                create.expression(
-                    StandardOperator.Length,
-                    create.local_name(OBLIGATIONS_PER_THREAD)
-                )
-            )
-        ),
-        create.expression(
-            StandardOperator.Perm,
-            create.expression(
-                StandardOperator.Subscript,
-                create.local_name(OBLIGATIONS_PER_THREAD),
-                create.local_name("i")
-            ),
-            create.reserved_name(ASTReserved.FullPerm)
-        ),
-        create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
-    );
-
-    ASTNode waitLevelPerm = create.starall(
-        create.expression(
-            StandardOperator.And,
-            create.expression(
-                StandardOperator.GTE,
-                create.local_name("i"),
-                create.constant(0)
-            ),
-            create.expression(
-                StandardOperator.LT,
-                create.local_name("i"),
-                create.expression(
-                    StandardOperator.Length,
-                    create.local_name(OBLIGATIONS_PER_THREAD)
-                )
-            )
-        ),
-        create.expression(
-            StandardOperator.Perm,
-            create.dereference(
-                create.expression(
-                    StandardOperator.Subscript,
-                    create.local_name(OBLIGATIONS_PER_THREAD),
-                    create.local_name("i")
-                ),
-                "waitLevel"
-            ),
-            create.reserved_name(ASTReserved.FullPerm)
-        ),
-        create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
-    );
-
-    ASTNode waitLevelsCheck = create.forall(
-        create.expression(
-            StandardOperator.And,
-            create.expression(
-                StandardOperator.GTE,
-                create.local_name("i"),
-                create.constant(0)
-            ),
-            create.expression(
-                StandardOperator.LT,
-                create.local_name("i"),
-                create.expression(
-                    StandardOperator.Length,
-                    create.local_name(OBLIGATIONS_PER_THREAD)
-                )
-            )
-        ),
-        create.expression(
-            StandardOperator.GTE,
-            create.dereference(
-                create.expression(
-                    StandardOperator.Subscript,
-                    create.local_name(OBLIGATIONS_PER_THREAD),
-                    create.local_name("i")
-                ),
-                "waitLevel"
-            ),
-            create.constant(0)
-        ),
-        create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
-    );
-
     ContractBuilder cb = new ContractBuilder();
     if (m.getKind().equals(Method.Kind.Constructor)) {
       ASTNode body = m.getBody();
       if (body != null) {
-        BlockStatement block;
-        if (body instanceof BlockStatement) {
-          block = ((BlockStatement) body);
-        } else {
-          block = create.block(body);
-        }
+        BlockStatement block = getBodyBlock(body);
 
         block.addStatement(
             create.assignment(
@@ -455,16 +360,101 @@ public class ObligationRewriter extends AbstractRewriter {
       );
     }
 
-//    cb.requires(obsPerm);
+    ASTNode obsPerm = create.starall(
+        create.expression(
+            StandardOperator.And,
+            create.expression(
+                StandardOperator.GTE,
+                create.local_name("i"),
+                create.constant(0)
+            ),
+            create.expression(
+                StandardOperator.LT,
+                create.local_name("i"),
+                create.expression(
+                    StandardOperator.Length,
+                    create.local_name(OBLIGATIONS_PER_THREAD)
+                )
+            )
+        ),
+        create.expression(
+            StandardOperator.Perm,
+            create.expression(
+                StandardOperator.Subscript,
+                create.local_name(OBLIGATIONS_PER_THREAD),
+                create.local_name("i")
+            ),
+            create.reserved_name(ASTReserved.FullPerm)
+        ),
+        create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
+    );
+
+    cb.requires(obsPerm);
 //    cb.requires(waitLevelPerm);
 //    cb.requires(waitLevelsCheck);
 //
-//    cb.ensures(obsPerm);
+    cb.ensures(obsPerm);
 //    cb.ensures(waitLevelPerm);
 //    cb.ensures(waitLevelsCheck);
 
+    ASTNode body = rewrite(m.getBody());
+    if (m.isSynchronized() && body != null) {
+      BlockStatement block = getBodyBlock(body);
+      block.prepend(
+          create.special(
+              ASTSpecial.Kind.Inhale,
+              create.expression(
+                  StandardOperator.Perm,
+                  Ot(),
+                  create.reserved_name(ASTReserved.FullPerm)
+              )
+          )
+      );
+      block.prepend(
+          create.special(
+              ASTSpecial.Kind.Inhale,
+              create.expression(
+                  StandardOperator.Perm,
+                  Wt(),
+                  create.reserved_name(ASTReserved.FullPerm)
+              )
+          )
+      );
+
+      block.append(
+          create.special(
+              ASTSpecial.Kind.Exhale,
+              create.expression(
+                  StandardOperator.Perm,
+                  Ot(),
+                  create.reserved_name(ASTReserved.FullPerm)
+              )
+          )
+      );
+
+      block.append(
+          create.special(
+              ASTSpecial.Kind.Exhale,
+              create.expression(
+                  StandardOperator.Perm,
+                  Wt(),
+                  create.reserved_name(ASTReserved.FullPerm)
+              )
+          )
+      );
+
+      body = block;
+    }
+
     rewrite(m.getContract(), cb);
-    result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), args, rewrite(m.getBody()));
+    result = create.method_kind(m.getKind(), m.getReturnType(), cb.getContract(), m.getName(), args, body);
+  }
+
+  private BlockStatement getBodyBlock(ASTNode body) {
+    if (body instanceof BlockStatement) {
+      return (BlockStatement) body;
+    }
+    return create.block(body);
   }
 
   @Override
@@ -524,9 +514,6 @@ public class ObligationRewriter extends AbstractRewriter {
     obligationClass.add(
         create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean))
     );
-    obligationClass.add(
-        create.field_decl("waitLevel", create.primitive_type(PrimitiveSort.Integer))
-    );
 
     obligationClass.add(
         create.method_kind(
@@ -537,7 +524,6 @@ public class ObligationRewriter extends AbstractRewriter {
             new DeclarationStatement[] {
                 create.field_decl("object", create.class_type("java_DOT_lang_DOT_Object")),
                 create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean)),
-                create.field_decl("waitLevel", create.primitive_type(PrimitiveSort.Integer))
             },
             create.block(
                 create.assignment(
@@ -553,13 +539,6 @@ public class ObligationRewriter extends AbstractRewriter {
                         "isLock"
                     ),
                     create.local_name("isLock")
-                ),
-                create.assignment(
-                    create.dereference(
-                        create.reserved_name(ASTReserved.This),
-                        "waitLevel"
-                    ),
-                    create.local_name("waitLevel")
                 )
             )
         )

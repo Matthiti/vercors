@@ -1,5 +1,7 @@
-public class Test
-{
+/**
+ * Internal test, no idea if it works.
+ */
+public class Test {
 
   public Test() {
     testVars = new TestVars();
