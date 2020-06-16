@@ -360,42 +360,39 @@ public class ObligationRewriter extends AbstractRewriter {
       );
     }
 
-    ASTNode obsPerm = create.starall(
-        create.expression(
-            StandardOperator.And,
-            create.expression(
-                StandardOperator.GTE,
-                create.local_name("i"),
-                create.constant(0)
-            ),
-            create.expression(
-                StandardOperator.LT,
-                create.local_name("i"),
-                create.expression(
-                    StandardOperator.Length,
-                    create.local_name(OBLIGATIONS_PER_THREAD)
-                )
-            )
-        ),
-        create.expression(
-            StandardOperator.Perm,
-            create.expression(
-                StandardOperator.Subscript,
-                create.local_name(OBLIGATIONS_PER_THREAD),
-                create.local_name("i")
-            ),
-            create.reserved_name(ASTReserved.FullPerm)
-        ),
-        create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
-    );
+    if (!m.getKind().equals(Method.Kind.Predicate)) {
+      ASTNode obsPerm = create.starall(
+          create.expression(
+              StandardOperator.And,
+              create.expression(
+                  StandardOperator.GTE,
+                  create.local_name("i"),
+                  create.constant(0)
+              ),
+              create.expression(
+                  StandardOperator.LT,
+                  create.local_name("i"),
+                  create.expression(
+                      StandardOperator.Length,
+                      create.local_name(OBLIGATIONS_PER_THREAD)
+                  )
+              )
+          ),
+          create.expression(
+              StandardOperator.Perm,
+              create.expression(
+                  StandardOperator.Subscript,
+                  create.local_name(OBLIGATIONS_PER_THREAD),
+                  create.local_name("i")
+              ),
+              create.reserved_name(ASTReserved.FullPerm)
+          ),
+          create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
+      );
 
-    cb.requires(obsPerm);
-//    cb.requires(waitLevelPerm);
-//    cb.requires(waitLevelsCheck);
-//
-    cb.ensures(obsPerm);
-//    cb.ensures(waitLevelPerm);
-//    cb.ensures(waitLevelsCheck);
+      cb.requires(obsPerm);
+      cb.ensures(obsPerm);
+    }
 
     ASTNode body = rewrite(m.getBody());
     if (m.isSynchronized() && body != null) {

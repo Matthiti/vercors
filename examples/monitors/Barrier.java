@@ -4,7 +4,7 @@ public class Barrier {
 
   /*@
     requires n > 0;
-    ensures Perm(this.n, write);
+    ensures Perm(this.n, read);
     ensures this.n == n;
    */
   public Barrier(int n) {
@@ -12,7 +12,7 @@ public class Barrier {
   }
 
   /*@
-    context Perm(n, write);
+    context Perm(n, read);
     context Perm(\Ot(this), read);
     context Perm(\wait_level(\lock(this)), read);
     context Perm(\wait_level(\cond(this)), read);
@@ -71,7 +71,7 @@ class BarrierThread {
     context Perm(\Ot(barrier), read);
     context Perm(\wait_level(\lock(barrier)), read);
     context Perm(\wait_level(\cond(barrier)), read);
-    context Perm(barrier.n, write);
+    context Perm(barrier.n, read);
     requires barrier.n > 0;
     requires \Ot(barrier) > 0;
     requires barrier.n <= \Ot(barrier);
