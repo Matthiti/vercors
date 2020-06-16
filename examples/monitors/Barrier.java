@@ -14,9 +14,13 @@ public class Barrier {
   /*@
     context Perm(n, write);
     context Perm(\Ot(this), read);
+    context Perm(\wait_level(\lock(this)), read);
+    context Perm(\wait_level(\cond(this)), read);
     requires n > 0;
     requires \Ot(this) > 0;
     requires n <= \Ot(this);
+    requires \wait_level(\lock(this)) == 0;
+    requires \wait_level(\cond(this)) == 1;
     ensures n == \old(n) - 1;
    */
   public synchronized void waitForBarrier() {
@@ -35,6 +39,8 @@ class Main {
 
   public void main() {
     Barrier barrier = new Barrier(3);
+    //@ set_wait_level \lock(barrier), 0;
+    //@ set_wait_level \cond(barrier), 1;
     //@ charge_obs barrier, 3;
 
     BarrierThread t1 = new BarrierThread(barrier);
@@ -63,10 +69,14 @@ class BarrierThread {
   /*@
     context Perm(barrier, read);
     context Perm(\Ot(barrier), read);
+    context Perm(\wait_level(\lock(barrier)), read);
+    context Perm(\wait_level(\cond(barrier)), read);
     context Perm(barrier.n, write);
     requires barrier.n > 0;
     requires \Ot(barrier) > 0;
     requires barrier.n <= \Ot(barrier);
+    requires \wait_level(\lock(barrier)) == 0;
+    requires \wait_level(\cond(barrier)) == 1;
     ensures barrier.n == \old(barrier.n) - 1;
    */
   public void start() {
