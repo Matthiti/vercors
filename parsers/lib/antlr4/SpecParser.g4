@@ -79,6 +79,8 @@ valStatement
  | 'charge_obs' langExpr ',' langExpr ';'
  | 'discharge_ob' langExpr ';'
  | 'discharge_obs' langExpr ',' langExpr ';'
+ | 'transfer_ob' langExpr ',' langExpr ';'
+ | 'transfer_obs' langExpr ',' langExpr ',' langExpr ';'
  | 'set_wait_level' langExpr ',' langExpr ';'
  ;
 

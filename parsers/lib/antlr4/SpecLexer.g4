@@ -84,6 +84,8 @@ VAL_CHARGE_OB: 'charge_ob';
 VAL_CHARGE_OBS: 'charge_obs';
 VAL_DISCHARGE_OB: 'discharge_ob';
 VAL_DISCHARGE_OBS: 'discharge_obs';
+VAL_TRANSFER_OB: 'transfer_ob';
+VAL_TRANSFER_OBS: 'transfer_obs';
 VAL_SET_WAIT_LEVEL: 'set_wait_level';
 
 UNFOLDING: '\\unfolding';

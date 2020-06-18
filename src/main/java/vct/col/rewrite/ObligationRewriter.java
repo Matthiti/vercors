@@ -101,6 +101,12 @@ public class ObligationRewriter extends AbstractRewriter {
             // TODO: remove also from obs
         );
         break;
+      case TransferOb:
+        // TODO: implement
+        break;
+      case TransferObs:
+        // TODO: implement
+        break;
       case SetWaitLevel:
         result = create.assignment(
             waitLevel((OperatorExpression) s.getArg(0)),

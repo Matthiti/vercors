@@ -44,8 +44,11 @@ class Main {
     //@ charge_obs barrier, 3;
 
     BarrierThread t1 = new BarrierThread(barrier);
+    //@ transfer_ob barrier, t1.getId();
     BarrierThread t2 = new BarrierThread(barrier);
+    //@ transfer_ob barrier, t2.getId();
     BarrierThread t3 = new BarrierThread(barrier);
+    //@ transfer_ob barrier, t3.getId();
     t1.start();
     t2.start();
     t3.start();
@@ -91,5 +94,9 @@ class BarrierThread {
 
   public void join() {
 
+  }
+
+  public int getId() {
+    return 0;
   }
 }

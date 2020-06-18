@@ -843,7 +843,11 @@ case class JavaJMLtoCOL(fileName: String, tokens: CommonTokenStream, parser: Jav
       create special(ASTSpecial.Kind.DischargeOb, expr(arg))
     case ValStatement34(_discharge_obs, arg0, _, arg1, _) =>
       create special(ASTSpecial.Kind.DischargeObs, expr(arg0), expr(arg1))
-    case ValStatement35(_set_wait_level, arg0, _, arg1, _) =>
+    case ValStatement35(_transfer_ob, arg0, _, arg1, _) =>
+      create special(ASTSpecial.Kind.TransferOb, expr(arg0), expr(arg1))
+    case ValStatement36(_transfer_obs, arg0, _, arg1, _, arg2, _) =>
+      create special(ASTSpecial.Kind.TransferObs, expr(arg0), expr(arg1), expr(arg2))
+    case ValStatement37(_set_wait_level, arg0, _, arg1, _) =>
       create special(ASTSpecial.Kind.SetWaitLevel, expr(arg0), expr(arg1))
   })
 

@@ -1971,6 +1971,42 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
       }
       break;
     }
+    case TransferOb:
+    {
+      Type t = s.args[0].getType();
+      if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!(t instanceof ClassType)) {
+        Fail("Argument of %s must be a class type at %s", s.kind, s.getOrigin());
+      }
+
+      Type t2 = s.args[1].getType();
+      if (t2 == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!t2.isPrimitive(PrimitiveSort.Integer)) {
+        Fail("Argument of %s must be an integer at %s", s.kind, s.getOrigin());
+      }
+      break;
+    }
+    case TransferObs:
+    {
+      Type t = s.args[0].getType();
+      if (t == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!(t instanceof ClassType)) {
+        Fail("Argument of %s must be a class type at %s", s.kind, s.getOrigin());
+      }
+
+      Type t2 = s.args[1].getType();
+      if (t2 == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!t2.isPrimitive(PrimitiveSort.Integer)) {
+        Fail("Argument of %s must be an integer at %s", s.kind, s.getOrigin());
+      }
+
+      Type t3 = s.args[2].getType();
+      if (t3 == null) Fail("type of argument is unknown at %s", s.getOrigin());
+      if (!t3.isPrimitive(PrimitiveSort.Integer)) {
+        Fail("Argument of %s must be an integer at %s", s.kind, s.getOrigin());
+      }
+      break;
+    }
     case SetWaitLevel:
     {
       Type t = s.args[0].getType();

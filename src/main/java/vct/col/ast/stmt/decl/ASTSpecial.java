@@ -140,6 +140,14 @@ public class ASTSpecial extends ASTDeclaration {
      */
     DischargeObs(2),
     /**
+     * Transfers an obligation
+     */
+    TransferOb(2),
+    /**
+     * Transfers multiple obligations
+     */
+    TransferObs(3),
+    /**
      * Sets the wait level of a lock / condition variable
      */
     SetWaitLevel(2)
