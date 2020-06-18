@@ -344,7 +344,15 @@ public enum StandardOperator {
   /**
    * The wait level of a lock / condition variable
    */
-  WaitLevel(1)
+  WaitLevel(1),
+  /**
+   * Check whether the current thread has an obligation
+   */
+  HasOb(1),
+  /**
+   * Check whether the current thread has multiple obligations
+   */
+  HasObs(2)
   ;
 
   private final int arity;

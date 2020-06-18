@@ -101,6 +101,10 @@ public enum ASTReserved {
    */
   OptionNone,
   /**
+   * Checks that the current thread has no obligations.
+   */
+  NoObs,
+  /**
    * The default case in a switch.
    */
   Default

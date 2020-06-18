@@ -117,6 +117,9 @@ COND: '\\cond';
 WT: '\\Wt';
 OT: '\\Ot';
 WAIT_LEVEL: '\\wait_level';
+HAS_OB: '\\has_ob';
+HAS_OBS: '\\has_obs';
+NO_OBS: '\\no_obs';
 
 NONE: 'none';
 OPTION_NONE: 'None';

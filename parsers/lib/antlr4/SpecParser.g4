@@ -131,6 +131,9 @@ valPrimary
     | '\\Wt' '(' langExpr ')'
     | '\\Ot' '(' langExpr ')'
     | '\\wait_level' '(' langExpr ')'
+    | '\\has_ob' '(' langExpr ')'
+    | '\\has_obs' '(' langExpr ',' langExpr ')'
+    | '\\no_obs'
     | 'Reducible' '(' langExpr ',' valReducibleOperator ')'
     | langId ':' langExpr
     ;

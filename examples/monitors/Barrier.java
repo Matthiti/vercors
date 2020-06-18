@@ -21,6 +21,8 @@ public class Barrier {
     requires n <= \Ot(this);
     requires \wait_level(\lock(this)) == 0;
     requires \wait_level(\cond(this)) == 1;
+    requires \has_ob(\cond(this));
+    ensures !\has_ob(\cond(this));
     ensures n == \old(n) - 1;
    */
   public synchronized void waitForBarrier() {
@@ -37,6 +39,7 @@ public class Barrier {
 
 class Main {
 
+  //@ context \no_obs;
   public void main() {
     Barrier barrier = new Barrier(3);
     //@ set_wait_level \lock(barrier), 0;
@@ -80,6 +83,8 @@ class BarrierThread {
     requires barrier.n <= \Ot(barrier);
     requires \wait_level(\lock(barrier)) == 0;
     requires \wait_level(\cond(barrier)) == 1;
+    requires \has_ob(\cond(barrier));
+    ensures  \no_obs;
     ensures barrier.n == \old(barrier.n) - 1;
    */
   public void start() {

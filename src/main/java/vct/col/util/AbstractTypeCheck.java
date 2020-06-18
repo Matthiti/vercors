@@ -651,6 +651,10 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
           e.setType(new PrimitiveType(PrimitiveSort.Integer));
           break;
         }
+        case NoObs:{
+          e.setType(new PrimitiveType(PrimitiveSort.Boolean));
+          break;
+        }
         default:
             Abort("missing case for reserved name %s",name);
         }
@@ -1480,13 +1484,7 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
 
         e.setType(elementType);
         break;
-      case LockOf: {
-        Type t = e.arg(0).getType();
-        if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
-        if (!(t instanceof ClassType)) Fail("type must be a class type, got %s", t);
-        e.setType(new PrimitiveType(PrimitiveSort.Obligation));
-        break;
-      }
+      case LockOf:
       case CondVarOf: {
         Type t = e.arg(0).getType();
         if (t == null) Fail("type of argument is unknown at %s", e.getOrigin());
@@ -1507,6 +1505,24 @@ public class AbstractTypeCheck extends RecursiveVisitor<Type> {
         if (t == null) Fail("type of first argument is unknown at %s", e.getOrigin());
         if (!t.isObligation()) Fail("type should be an obligation type, got %s", t);
         e.setType(new PrimitiveType(PrimitiveSort.Integer));
+        break;
+      }
+      case HasOb: {
+        Type t = e.arg(0).getType();
+        if (t == null) Fail("type of first argument is unknown at %s", e.getOrigin());
+        if (!t.isObligation()) Fail("type should be an obligation type, got %s", t);
+        e.setType(new PrimitiveType(PrimitiveSort.Boolean));
+        break;
+      }
+      case HasObs: {
+        Type t = e.arg(0).getType();
+        if (t == null) Fail("type of first argument is unknown at %s", e.getOrigin());
+        if (!t.isObligation()) Fail("type should be an obligation type, got %s", t);
+
+        Type t2 = e.arg(1).getType();
+        if (t2 == null) Fail("type of first argument is unknown at %s", e.getOrigin());
+        if (!t.isPrimitive(PrimitiveSort.Integer)) Fail("type should be an integer, got %s", t);
+        e.setType(new PrimitiveType(PrimitiveSort.Boolean));
         break;
       }
       default:

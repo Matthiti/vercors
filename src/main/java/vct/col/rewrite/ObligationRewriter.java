@@ -274,8 +274,26 @@ public class ObligationRewriter extends AbstractRewriter {
       case WaitLevel:
         result = waitLevel((OperatorExpression) e.first());
         break;
+      case HasOb:
+        // TODO: implement
+        result = create.constant(true);
+        break;
+      case HasObs:
+        // TODO: implement
+        result = create.constant(true);
+        break;
       default:
         super.visit(e);
+    }
+  }
+
+  @Override
+  public void visit(NameExpression e) {
+    if (e.isReserved(ASTReserved.NoObs)) {
+      // TODO: implement
+      result = create.constant(true);
+    } else {
+      super.visit(e);
     }
   }
 

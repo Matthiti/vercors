@@ -839,7 +839,13 @@ case class PVLtoCOL(fileName: String, tokens: CommonTokenStream, parser: PVLPars
       create expression(Ot, expr(o))
     case ValPrimary32("\\wait_level", "(", o, ")") =>
       create expression(WaitLevel, expr(o))
-    case ValPrimary33("Reducible", "(", exp, _, opNode, ")") =>
+    case ValPrimary33("\\has_ob", "(", o, ")") =>
+      create expression(HasOb, expr(o))
+    case ValPrimary34("\\has_obs", "(", a, _, b, ")") =>
+      create expression(HasObs, expr(a), expr(b))
+    case ValPrimary35("\\no_obs") =>
+      create reserved_name ASTReserved.NoObs
+    case ValPrimary36("Reducible", "(", exp, _, opNode, ")") =>
       val opText = opNode match {
         case ValReducibleOperator0("+") => "+"
         case ValReducibleOperator1(id) => convertID(id)
@@ -849,7 +855,7 @@ case class PVLtoCOL(fileName: String, tokens: CommonTokenStream, parser: PVLPars
         case "min" => ReducibleMin
         case "max" => ReducibleMax
       }, expr(exp))
-    case ValPrimary34(label, _, exp) =>
+    case ValPrimary37(label, _, exp) =>
       val res = expr(exp)
       res.addLabel(create label(convertID(label)))
       res
