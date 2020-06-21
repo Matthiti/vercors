@@ -16,11 +16,11 @@ public class Barrier {
     context Perm(\Ot(this), read);
     context Perm(\wait_level(\lock(this)), read);
     context Perm(\wait_level(\cond(this)), read);
+    context \wait_level(\lock(this)) == 0;
+    context \wait_level(\cond(this)) == 1;
     requires n > 0;
     requires \Ot(this) > 0;
     requires n <= \Ot(this);
-    requires \wait_level(\lock(this)) == 0;
-    requires \wait_level(\cond(this)) == 1;
     requires \has_ob(\cond(this));
     ensures !\has_ob(\cond(this));
     ensures n == \old(n) - 1;
@@ -66,8 +66,10 @@ class BarrierThread {
 
   private final Barrier barrier;
 
-  //@ ensures Perm(this.barrier, read);
-  //@ ensures this.barrier == barrier;
+  /*@
+    ensures Perm(this.barrier, read);
+    ensures this.barrier == barrier;
+   */
   public BarrierThread(Barrier barrier) {
     this.barrier = barrier;
   }
@@ -78,30 +80,23 @@ class BarrierThread {
     context Perm(\wait_level(\lock(barrier)), read);
     context Perm(\wait_level(\cond(barrier)), read);
     context Perm(barrier.n, read);
+    context \wait_level(\lock(barrier)) == 0;
+    context \wait_level(\cond(barrier)) == 1;
     requires barrier.n > 0;
     requires \Ot(barrier) > 0;
     requires barrier.n <= \Ot(barrier);
-    requires \wait_level(\lock(barrier)) == 0;
-    requires \wait_level(\cond(barrier)) == 1;
     requires \has_ob(\cond(barrier));
     ensures  \no_obs;
     ensures barrier.n == \old(barrier.n) - 1;
    */
   public void start() {
-    for (int i = 0; i < 10; i++) {
-      // Do stuff
-    }
+    for (int i = 0; i < 10; i++) { }
     barrier.waitForBarrier();
-    for (int j = 10; j< 20; j++) {
-      // Do other stuff
-    }
+    for (int j = 10; j < 20; j++) { }
   }
 
-  public void join() {
+  public void join();
 
-  }
-
-  public int getId() {
-    return 0;
-  }
+  //@ ensures \result == \current_thread;
+  public int getId();
 }

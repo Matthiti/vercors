@@ -148,7 +148,7 @@ public class ObligationRewriter extends AbstractRewriter {
     return create.expression(
         StandardOperator.Or,
         create.expression(
-            StandardOperator.LTE,
+            StandardOperator.EQ,
             Wt,
             constant(0)
         ),
