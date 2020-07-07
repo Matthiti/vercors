@@ -1,0 +1,9 @@
+class Test {
+
+    void main(bag<A> a) {
+        A b = new A();
+        b in a;
+    }
+}
+
+class A {}

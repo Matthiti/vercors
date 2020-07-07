@@ -9,9 +9,12 @@ import vct.col.ast.type.ASTReserved;
 import vct.col.ast.type.PrimitiveSort;
 import vct.col.ast.util.ContractBuilder;
 
+import java.util.HashMap;
+
 public class ObligationRewriter extends AbstractRewriter {
 
   private static final String OBLIGATIONS_PER_THREAD = "obs";
+  private static final String OBLIGATION_CLASS_CONSTRUCTOR = "constructor_Obligation_Obligation__java_DOT_lang_DOT_Object__Boolean";
   private static final String WT = "Wt";
   private static final String OT = "Ot";
   private static final String WAIT_LEVEL_LOCK = "wait_level_lock";
@@ -54,20 +57,103 @@ public class ObligationRewriter extends AbstractRewriter {
         );
         break;
       case ChargeOb:
+        String ob = randomIdentifier();
         result = create.block(
-            incrementOt(s.getArg(0))
-            // TODO: add also to obs
+            incrementOt(s.getArg(0)),
+            create.field_decl(
+                ob,
+                create.class_type(obligationClass.name()),
+                create.invokation(
+                    create.class_type(obligationClass.name()),
+                    create.class_type(obligationClass.name()),
+                    OBLIGATION_CLASS_CONSTRUCTOR,
+                    s.getArg(0),
+                    create.constant(false)
+                )
+            ),
+            create.assignment(
+                create.local_name(OBLIGATIONS_PER_THREAD),
+                create.expression(
+                    StandardOperator.Plus,
+                    create.local_name(OBLIGATIONS_PER_THREAD),
+                    create.struct_value(
+                        create.primitive_type(PrimitiveSort.Bag, create.class_type(obligationClass.getName())),
+                        new HashMap<>(),
+                        create.local_name(ob)
+                    )
+                )
+            )
         );
         break;
       case ChargeObs:
+        ob = randomIdentifier();
         result = create.block(
-            addToOt(s.getArg(0), s.getArg(1))
-            // TODO: add also to obs
+            addToOt(s.getArg(0), s.getArg(1)),
+            create.field_decl(
+                ob,
+                create.class_type(obligationClass.name()),
+                create.invokation(
+                    create.class_type(obligationClass.name()),
+                    create.class_type(obligationClass.name()),
+                    OBLIGATION_CLASS_CONSTRUCTOR,
+                    s.getArg(0),
+                    create.constant(false)
+                )
+            ),
+            create.for_loop(
+                create.field_decl("_i", create.primitive_type(PrimitiveSort.Integer), create.constant(0)),
+                create.expression(
+                    StandardOperator.LT,
+                    create.local_name("_i"),
+                    s.getArg(1)
+                ),
+                create.expression(
+                    StandardOperator.AddAssign,
+                    create.local_name("_i"),
+                    create.constant(1)
+                ),
+                create.assignment(
+                    create.local_name(OBLIGATIONS_PER_THREAD),
+                    create.expression(
+                        StandardOperator.Plus,
+                        create.local_name(OBLIGATIONS_PER_THREAD),
+                        create.struct_value(
+                            create.primitive_type(PrimitiveSort.Bag, create.class_type(obligationClass.getName())),
+                            new HashMap<>(),
+                            create.local_name(ob)
+                        )
+                    )
+                )
+            )
         );
         break;
       case DischargeOb:
+        ob = randomIdentifier();
         result = create.block(
             // TODO: add assertion that it is in obs
+            create.field_decl(
+                ob,
+                create.class_type(obligationClass.name()),
+                create.invokation(
+                    create.class_type(obligationClass.name()),
+                    create.class_type(obligationClass.name()),
+                    OBLIGATION_CLASS_CONSTRUCTOR,
+                    s.getArg(0),
+                    create.constant(false)
+                )
+            ),
+            create.special(
+                ASTSpecial.Kind.Assert,
+                create.expression(
+                    StandardOperator.GT,
+                    create.expression(
+                        StandardOperator.Member,
+                        create.local_name(ob),
+                        create.local_name(OBLIGATIONS_PER_THREAD)
+                    ),
+                    create.constant(0)
+                )
+            ),
             create.special(
                 ASTSpecial.Kind.Assert,
                 enoughObs(
@@ -258,6 +344,57 @@ public class ObligationRewriter extends AbstractRewriter {
         : create.field_name(WAIT_LEVEL_COND);
   }
 
+  private ASTNode obligation(OperatorExpression expr) {
+    switch (expr.operator()) {
+      case LockOf:
+        // TODO;
+      case CondVarOf:
+        // TODO;
+      default:
+        return null;
+        // TODO: throw error. This state should never be reached.
+    }
+  }
+
+  private ASTNode obligationLock() {
+    return obligationLock(null);
+  }
+
+  private ASTNode obligationLock(ASTNode object) {
+    return object != null
+        ? create.dereference(
+            object,
+            OBLIGATION_LOCK
+        )
+        : create.field_name(OBLIGATION_LOCK);
+  }
+
+  private ASTNode obligationCond() {
+    return obligationCond(null);
+  }
+
+  private ASTNode obligationCond(ASTNode object) {
+    return object != null
+        ? create.dereference(
+            object,
+            OBLIGATION_COND
+        )
+        : create.field_name(OBLIGATION_COND);
+  }
+
+  // TODO: find better way?
+  private String randomIdentifier() {
+    String allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    StringBuilder builder = new StringBuilder("ob_");
+
+    for (int i = 0; i < 10; i++) {
+      int index = (int) (allowed.length() * Math.random());
+      builder.append(allowed.charAt(index));
+    }
+
+    return builder.toString();
+  }
+
   @Override
   public void visit(OperatorExpression e) {
     switch (e.operator()) {
@@ -303,11 +440,8 @@ public class ObligationRewriter extends AbstractRewriter {
     args[0] = create.field_decl(
         OBLIGATIONS_PER_THREAD,
         create.primitive_type(
-            PrimitiveSort.Array,
-            create.primitive_type(
-                PrimitiveSort.Cell,
-                create.class_type(obligationClass.getName())
-            )
+            PrimitiveSort.Bag,
+            create.class_type(obligationClass.getName())
         )
     );
 
@@ -397,7 +531,7 @@ public class ObligationRewriter extends AbstractRewriter {
                   StandardOperator.LT,
                   create.local_name("i"),
                   create.expression(
-                      StandardOperator.Length,
+                      StandardOperator.Size,
                       create.local_name(OBLIGATIONS_PER_THREAD)
                   )
               )
@@ -414,8 +548,8 @@ public class ObligationRewriter extends AbstractRewriter {
           create.field_decl("i", create.primitive_type(PrimitiveSort.Integer))
       );
 
-      cb.requires(obsPerm);
-      cb.ensures(obsPerm);
+//      cb.requires(obsPerm);
+//      cb.ensures(obsPerm);
     }
 
     ASTNode body = rewrite(m.getBody());
@@ -536,12 +670,28 @@ public class ObligationRewriter extends AbstractRewriter {
         create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean))
     );
 
+    // Constructor
     obligationClass.add(
         create.method_kind(
             Method.Kind.Constructor,
             create.primitive_type(PrimitiveSort.Void),
             null,
-            obligationClass.getName(),
+            OBLIGATION_CLASS_CONSTRUCTOR,
+            new DeclarationStatement[] {
+                create.field_decl("object", create.class_type("java_DOT_lang_DOT_Object")),
+                create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean)),
+            },
+            null
+        )
+    );
+
+    // Internal constructor
+    obligationClass.add(
+        create.method_kind(
+            Method.Kind.Constructor,
+            create.primitive_type(PrimitiveSort.Void),
+            null,
+            "internal_Obligation_Obligation__java_DOT_lang_DOT_Object__Boolean",
             new DeclarationStatement[] {
                 create.field_decl("object", create.class_type("java_DOT_lang_DOT_Object")),
                 create.field_decl("isLock", create.primitive_type(PrimitiveSort.Boolean)),
